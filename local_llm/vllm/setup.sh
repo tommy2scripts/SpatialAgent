@@ -51,7 +51,7 @@ if [ -d ".venv-litellm" ]; then
 else
     uv venv .venv-litellm --python 3.12
     echo "  Installing LiteLLM proxy..."
-    uv pip install --python .venv-litellm/bin/python 'litellm[proxy]'
+    uv pip install --python .venv-litellm/bin/python 'litellm[proxy]==1.82.6'
 fi
 
 echo ""
