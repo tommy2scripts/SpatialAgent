@@ -9,3 +9,11 @@ __pycache__/
 *.egg-info/
 wandb
 experiments
+# Local LLM server artifacts
+local_llm/vllm/.venv-vllm/
+local_llm/vllm/.venv-litellm/
+local_llm/mlx/.venv-mlx/
+local_llm/*/.venv-*/
+local_llm/*/.pids/
+local_llm/*/logs/
+*.hf_home

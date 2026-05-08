@@ -1,10 +1,78 @@
 """
-Simplified LLM Factory for Azure OpenAI, OpenAI, Anthropic Claude, Google Gemini, and AWS Bedrock
+Simplified LLM Factory for Azure OpenAI, OpenAI, Anthropic Claude, Google Gemini,
+AWS Bedrock, and OpenAI-compatible endpoints (OpenRouter, z.AI, local gateways, LiteLLM, vLLM).
 """
 
 import os
+from typing import Any, List, Optional
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+
+
+# =============================================================================
+# Mistral continue_final_message handling
+# =============================================================================
+# Mistral models on vLLM require special handling for multi-turn conversations:
+# - When last message is from assistant: continue_final_message=True
+# - When last message is from user: add_generation_prompt=True (default)
+#
+# We use a LiteLLM callback (local_llm/vllm/custom_callbacks.py) to handle this
+# at the proxy layer. The callback automatically detects the last message role
+# and sets the appropriate flags before forwarding to vLLM.
+#
+# An alternative approach is to use a LangChain wrapper (MistralChatOpenAI)
+# that intercepts invoke() calls and adds extra_body parameters dynamically.
+# This is commented out below but can be enabled if not using LiteLLM.
+#
+# from langchain_core.messages import BaseMessage
+#
+# MISTRAL_MODELS = ("mistral", "ministral", "codestral", "pixtral")
+#
+# def _is_mistral_model(model: str) -> bool:
+#     """Check if the model is a Mistral family model."""
+#     return any(name in model.lower() for name in MISTRAL_MODELS)
+#
+# class MistralChatOpenAI:
+#     """Wrapper for ChatOpenAI that handles Mistral's continue_final_message."""
+#
+#     def __init__(self, **kwargs):
+#         from langchain_openai import ChatOpenAI
+#         self._llm = ChatOpenAI(**kwargs)
+#
+#     def _get_extra_body(self, messages: List[BaseMessage]) -> dict:
+#         if not messages:
+#             return {}
+#         last_role = getattr(messages[-1], "type", None)
+#         if last_role in ("ai", "assistant"):
+#             return {"continue_final_message": True, "add_generation_prompt": False}
+#         return {}
+#
+#     def invoke(self, messages: Any, **kwargs) -> Any:
+#         if isinstance(messages, list):
+#             extra_body = self._get_extra_body(messages)
+#             if extra_body:
+#                 existing = kwargs.get("extra_body", {})
+#                 kwargs["extra_body"] = {**existing, **extra_body}
+#         return self._llm.invoke(messages, **kwargs)
+#
+#     async def ainvoke(self, messages: Any, **kwargs) -> Any:
+#         if isinstance(messages, list):
+#             extra_body = self._get_extra_body(messages)
+#             if extra_body:
+#                 existing = kwargs.get("extra_body", {})
+#                 kwargs["extra_body"] = {**existing, **extra_body}
+#         return await self._llm.ainvoke(messages, **kwargs)
+#
+#     def __getattr__(self, name: str) -> Any:
+#         return getattr(self._llm, name)
+#
+# To use the wrapper approach, in make_llm() replace:
+#     return ChatOpenAI(**llm_kwargs)
+# with:
+#     if _is_mistral_model(model):
+#         return MistralChatOpenAI(**llm_kwargs)
+#     return ChatOpenAI(**llm_kwargs)
+# =============================================================================
 
 # Default recommended models (2025)
 DEFAULT_OPENAI_MODEL = "gpt-5"
@@ -59,7 +127,70 @@ def _is_bedrock_model(model: str) -> bool:
     return any(model.startswith(prefix) for prefix in BEDROCK_MODEL_PREFIXES)
 
 
+# =============================================================================
+# OpenAI-Compatible Routing (OpenRouter, z.AI, local gateways, LiteLLM, vLLM)
+# =============================================================================
+
+def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict] | None:
+    """Resolve routing for OpenAI-compatible endpoints.
+
+    Supports explicit provider prefixes and cascading env var fallback.
+
+    Provider prefixes (checked first, unambiguous):
+        openrouter/   → OpenRouter API
+        zai/          → z.AI API
+        local/        → Local model gateway (Ollama, LiteLLM, vLLM, etc.)
+
+    Generic env var cascade (fallback, checked after prefixes):
+        CUSTOM_LLM_BASE_URL > CUSTOM_MODEL_BASE_URL > OPENAI_BASE_URL
+
+    Returns:
+        Tuple of (resolved_model, base_url, api_key, default_headers) if routing should
+        use ChatOpenAI with a custom endpoint, otherwise None.
+    """
+    custom_base_url = (
+        os.environ.get("CUSTOM_LLM_BASE_URL")
+        or os.environ.get("CUSTOM_MODEL_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+        or ""
+    )
+    custom_api_key = (
+        os.environ.get("CUSTOM_LLM_API_KEY")
+        or os.environ.get("CUSTOM_MODEL_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or "EMPTY"
+    )
+    default_headers = {}
+
+    resolved_model = model
+
+    # Explicit provider prefixes (keeps routing unambiguous)
+    if model.startswith("openrouter/"):
+        resolved_model = model.split("/", 1)[1]
+        custom_base_url = custom_base_url or os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        custom_api_key = os.environ.get("OPENROUTER_API_KEY", custom_api_key)
+        if os.environ.get("OPENROUTER_HTTP_REFERER"):
+            default_headers["HTTP-Referer"] = os.environ["OPENROUTER_HTTP_REFERER"]
+        if os.environ.get("OPENROUTER_APP_TITLE"):
+            default_headers["X-Title"] = os.environ["OPENROUTER_APP_TITLE"]
+    elif model.startswith("zai/"):
+        resolved_model = model.split("/", 1)[1]
+        custom_base_url = custom_base_url or os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
+        custom_api_key = os.environ.get("ZAI_API_KEY", custom_api_key)
+    elif model.startswith("local/"):
+        resolved_model = model.split("/", 1)[1]
+        custom_base_url = custom_base_url or os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
+        custom_api_key = os.environ.get("LOCAL_LLM_API_KEY", custom_api_key)
+
+    if custom_base_url:
+        return resolved_model, custom_base_url, custom_api_key, default_headers
+
+    return None
+
+
+# =============================================================================
 # Model configurations
+# =============================================================================
 # supports_temp: whether the model supports temperature parameter
 # supports_stop: whether the model supports stop sequences parameter
 AZURE_MODELS = {
@@ -182,19 +313,28 @@ def make_llm(
     **kwargs
 ):
     """
-    Create LLM instance. Supports OpenAI, Azure OpenAI, Anthropic, Bedrock, and Google Gemini.
+    Create LLM instance. Supports OpenAI, Azure OpenAI, Anthropic, Bedrock,
+    Google Gemini, and OpenAI-compatible endpoints (OpenRouter, z.AI, local gateways).
 
     Configuration priority:
-        1. AZURE_API_KEY + AZURE_API_ENDPOINT set → Azure OpenAI
-        2. Model name detection (gemini-*, claude-*, gpt-*, etc.)
+        1. Explicit provider prefix (openrouter/, zai/, local/) → custom endpoint
+        2. CUSTOM_LLM_BASE_URL / CUSTOM_MODEL_BASE_URL / OPENAI_BASE_URL env vars → custom endpoint
+        3. AZURE_API_KEY + AZURE_API_ENDPOINT set → Azure OpenAI
+        4. Model name detection (gemini-*, claude-*, gpt-*, etc.)
 
     Environment Variables:
         AZURE_API_KEY: Azure OpenAI API key
         AZURE_API_ENDPOINT: Azure OpenAI endpoint URL
         AZURE_DEPLOYMENT_NAME: Azure deployment name (defaults to model name)
+        CUSTOM_LLM_BASE_URL / CUSTOM_MODEL_BASE_URL / OPENAI_BASE_URL: OpenAI-compatible base URL
+        CUSTOM_LLM_API_KEY / CUSTOM_MODEL_API_KEY: API key for custom endpoint
+        OPENROUTER_API_KEY, OPENROUTER_BASE_URL: OpenRouter credentials/routing
+        ZAI_API_KEY, ZAI_BASE_URL: z.AI credentials/routing
+        LOCAL_LLM_BASE_URL, LOCAL_LLM_API_KEY: local model gateway routing
 
     Args:
-        model: Model name (e.g., "gpt-4o", "claude-sonnet-4-5-20250929", "gemini-2.5-pro")
+        model: Model name (e.g., "gpt-4o", "claude-sonnet-4-5-20250929", "gemini-2.5-pro",
+               "openrouter/anthropic/claude-sonnet-4", "zai/qwen3-72b", "local/llama3.2")
         temperature: Sampling temperature (0-1). Ignored for reasoning models.
         streaming: Enable streaming responses
         track_cost: Enable cost tracking (default: True)
@@ -210,22 +350,46 @@ def make_llm(
     if track_cost:
         callbacks.append(CostCallback(model))
 
-    # # Custom OpenAI-compatible endpoint (LiteLLM, vLLM, Ollama, etc.) - currently not used
-    # custom_base_url = os.environ.get("CUSTOM_MODEL_BASE_URL", "")
-    # custom_api_key = os.environ.get("CUSTOM_MODEL_API_KEY", "EMPTY")
-    # if custom_base_url:
-    #     from langchain_openai import ChatOpenAI
-    #     return ChatOpenAI(
-    #         model=model,
-    #         base_url=custom_base_url,
-    #         api_key=custom_api_key if custom_api_key else "EMPTY",
-    #         callbacks=callbacks,
-    #         temperature=temperature,
-    #         streaming=streaming,
-    #         **kwargs
-    #     )
+    # -----------------------------------------------------------------------
+    # Step 1: OpenAI-compatible endpoint routing (OpenRouter, z.AI, local,
+    #         LiteLLM, vLLM, Ollama, and other custom endpoints)
+    # -----------------------------------------------------------------------
+    custom_route = _resolve_openai_compatible_routing(model)
+    if custom_route:
+        from langchain_openai import ChatOpenAI
 
-    # Google Gemini (using OpenAI-compatible endpoint for consistent response format)
+        resolved_model, custom_base_url, custom_api_key, default_headers = custom_route
+        stop_sequences = kwargs.pop("stop_sequences", DEFAULT_STOP_SEQUENCES)
+        explicit_headers = kwargs.pop("default_headers", {})
+
+        model_kwargs = {
+            "model": resolved_model,
+            "base_url": custom_base_url,
+            "api_key": custom_api_key if custom_api_key else "EMPTY",
+            "callbacks": callbacks,
+            "streaming": streaming,
+            **kwargs,
+        }
+
+        if default_headers:
+            model_kwargs["default_headers"] = {
+                **default_headers,
+                **explicit_headers,
+            }
+        elif explicit_headers:
+            model_kwargs["default_headers"] = explicit_headers
+
+        if not any(x in resolved_model.lower() for x in NO_STOP_MODELS):
+            model_kwargs["stop"] = stop_sequences
+
+        if not resolved_model.startswith(("o3", "o4")):
+            model_kwargs["temperature"] = temperature
+
+        return ChatOpenAI(**model_kwargs)
+
+    # -----------------------------------------------------------------------
+    # Step 2: Google Gemini (using OpenAI-compatible endpoint)
+    # -----------------------------------------------------------------------
     if "gemini" in model:
         from langchain_openai import ChatOpenAI
 
@@ -243,7 +407,9 @@ def make_llm(
             **kwargs
         )
 
-    # AWS Bedrock models
+    # -----------------------------------------------------------------------
+    # Step 3: AWS Bedrock models
+    # -----------------------------------------------------------------------
     if _is_bedrock_model(model):
         try:
             from langchain_aws import ChatBedrockConverse
@@ -286,7 +452,9 @@ def make_llm(
             **kwargs
         )
 
-    # Anthropic Claude (direct API)
+    # -----------------------------------------------------------------------
+    # Step 4: Anthropic Claude (direct API)
+    # -----------------------------------------------------------------------
     if "claude" in model:
         from langchain_anthropic import ChatAnthropic
 
@@ -309,7 +477,9 @@ def make_llm(
             **kwargs
         )
 
-    # Azure OpenAI (configured via environment variables)
+    # -----------------------------------------------------------------------
+    # Step 5: Azure OpenAI (configured via environment variables)
+    # -----------------------------------------------------------------------
     azure_api_key = os.environ.get("AZURE_API_KEY", "")
     azure_endpoint = os.environ.get("AZURE_API_ENDPOINT", "")
 
@@ -348,7 +518,9 @@ def make_llm(
                 **kwargs
             )
 
-    # OpenAI vs Azure routing for GPT/O-series models
+    # -----------------------------------------------------------------------
+    # Step 6: OpenAI vs Azure routing for GPT/O-series models
+    # -----------------------------------------------------------------------
     if model.startswith(("gpt-", "o3", "o4")):
         # Default to Azure for models in AZURE_MODELS, otherwise direct OpenAI
         if use_azure is None:
@@ -403,7 +575,9 @@ def make_llm(
 
             return ChatOpenAI(**model_kwargs)
 
-    # Unknown model
+    # -----------------------------------------------------------------------
+    # Step 7: Unknown model — provide helpful error
+    # -----------------------------------------------------------------------
     openai_azure_models = list(AZURE_MODELS.keys())
     claude_models = ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "claude-opus-4-5-20251101"]
     gemini_models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-pro-preview", "gemini-3-flash-preview"]
@@ -418,11 +592,17 @@ def make_llm(
 
     raise ValueError(
         f"Model '{model}' not supported. "
-        f"Supported models: {', '.join(sorted(supported_models))}"
+        f"Supported models: {', '.join(sorted(supported_models))}. "
+        f"Also supports OpenAI-compatible endpoints via provider prefixes: "
+        f"openrouter/<model>, zai/<model>, local/<model>, "
+        f"or via CUSTOM_LLM_BASE_URL / CUSTOM_MODEL_BASE_URL env vars."
     )
 
 
+# =============================================================================
 # Local embedding models (sentence-transformers)
+# =============================================================================
+
 LOCAL_EMBEDDING_MODELS = {
     "qwen3-0.6b": "Qwen/Qwen3-Embedding-0.6B",  # Best local model, on par with text-embedding-3-small
     "pubmedbert": "pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb",  # Biomedical, 768 dim
