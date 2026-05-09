@@ -18,6 +18,7 @@ DEFAULT_OPENAI_MODEL = "gpt-5"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
 DEFAULT_OPENCODE_GO_MODEL = "kimi-k2.6"
+DEFAULT_MAX_TOKENS = int(os.environ.get("SPATIALAGENT_MAX_TOKENS", "65536"))
 
 # OpenAI-compatible models that emit reasoning_content before final content.
 # If max_tokens is too small, these models can spend the whole budget on hidden
@@ -375,8 +376,11 @@ def make_llm(
         if not resolved_model.startswith(("o3", "o4")):
             model_kwargs["temperature"] = temperature
 
-        if _is_reasoning_content_model(resolved_model) and "max_tokens" not in model_kwargs:
-            model_kwargs["max_tokens"] = _default_reasoning_max_tokens()
+        if "max_tokens" not in model_kwargs:
+            if _is_reasoning_content_model(resolved_model):
+                model_kwargs["max_tokens"] = _default_reasoning_max_tokens()
+            else:
+                model_kwargs["max_tokens"] = DEFAULT_MAX_TOKENS
 
         return ChatOpenAI(**model_kwargs)
 
