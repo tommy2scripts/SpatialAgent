@@ -117,7 +117,8 @@ class SpatialAgent:
             self.tool_registry.register_langchain_tool(tool)
 
         # Inject all tools into Python REPL namespace so they can be called directly
-        from spatialagent.tool.coding import inject_tools_into_repl
+        if tools:
+            from spatialagent.tool.coding import inject_tools_into_repl
 
         # NOTE: Different LLMs generate tool calls with different syntax:
         #
@@ -173,12 +174,13 @@ class SpatialAgent:
             wrapper.__doc__ = langchain_tool.description
             return wrapper
 
-        tool_functions = {}
-        for tool in tools:
-            # Skip coding tools themselves to avoid recursion
-            if tool.name not in ["execute_python", "execute_bash"]:
-                tool_functions[tool.name] = make_tool_wrapper(tool, ws_model=self.web_search_model)
-        inject_tools_into_repl(tool_functions)
+        if tools:
+            tool_functions = {}
+            for tool in tools:
+                # Skip coding tools themselves to avoid recursion
+                if tool.name not in ["execute_python", "execute_bash"]:
+                    tool_functions[tool.name] = make_tool_wrapper(tool, ws_model=self.web_search_model)
+            inject_tools_into_repl(tool_functions)
 
         # Initialize tool retrieval
         self.tool_retrieval_method = tool_retrieval_method
