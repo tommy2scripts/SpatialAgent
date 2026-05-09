@@ -439,10 +439,10 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
         self.assertEqual(_default_reasoning_max_tokens(), 49152)
 
         os.environ["SPATIALAGENT_REASONING_MAX_TOKENS"] = "not-an-int"
-        self.assertEqual(_default_reasoning_max_tokens(), 32768)
+        self.assertEqual(_default_reasoning_max_tokens(), 65536)
 
         os.environ["SPATIALAGENT_REASONING_MAX_TOKENS"] = "-1"
-        self.assertEqual(_default_reasoning_max_tokens(), 32768)
+        self.assertEqual(_default_reasoning_max_tokens(), 65536)
 
     def test_default_max_tokens_env_parsing(self):
         """SPATIALAGENT_MAX_TOKENS should accept positive ints and ignore bad values."""
@@ -453,10 +453,10 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
         self.assertEqual(_default_max_tokens(), 24576)
 
         os.environ["SPATIALAGENT_MAX_TOKENS"] = "not-an-int"
-        self.assertEqual(_default_max_tokens(), 65536)
+        self.assertEqual(_default_max_tokens(), 393216)
 
         os.environ["SPATIALAGENT_MAX_TOKENS"] = "0"
-        self.assertEqual(_default_max_tokens(), 65536)
+        self.assertEqual(_default_max_tokens(), 393216)
 
     def test_opencode_go_reasoning_model_gets_larger_default_token_budget(self):
         """deepseek-v4-flash needs extra completion budget for reasoning_content."""
@@ -471,7 +471,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
 
             call_kwargs = mock_chat.call_args.kwargs
             self.assertEqual(call_kwargs.get("model"), "deepseek-v4-flash")
-            self.assertEqual(call_kwargs.get("max_tokens"), 32768)
+            self.assertEqual(call_kwargs.get("max_tokens"), 65536)
 
     def test_opencode_go_reasoning_model_respects_explicit_token_budget(self):
         """Explicit max_tokens should override the protective default."""
@@ -499,7 +499,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             make_llm("opencode-go/kimi-k2.6", track_cost=False)
 
             call_kwargs = mock_chat.call_args.kwargs
-            self.assertEqual(call_kwargs.get("max_tokens"), 65536)
+            self.assertEqual(call_kwargs.get("max_tokens"), 393216)
 
     def test_opencode_go_non_reasoning_model_respects_max_tokens_env_override(self):
         """SPATIALAGENT_MAX_TOKENS should affect OpenAI-compatible non-reasoning calls."""
@@ -529,7 +529,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             make_llm("opencode-go/kimi-k2.6", track_cost=False)
 
             call_kwargs = mock_chat.call_args.kwargs
-            self.assertEqual(call_kwargs.get("max_tokens"), 65536)
+            self.assertEqual(call_kwargs.get("max_tokens"), 393216)
 
 
 # =============================================================================
@@ -606,17 +606,17 @@ class TestExternalCodingAgentTools(unittest.TestCase):
     def test_delegate_to_claude_code_importable(self):
         """Verify the tool can be imported."""
         from spatialagent.tool.coding import delegate_to_claude_code
-        self.assertTrue(callable(delegate_to_claude_code))
+        self.assertTrue(hasattr(delegate_to_claude_code, "invoke"))
 
     def test_delegate_to_codex_importable(self):
         """Verify the tool can be imported."""
         from spatialagent.tool.coding import delegate_to_codex
-        self.assertTrue(callable(delegate_to_codex))
+        self.assertTrue(hasattr(delegate_to_codex, "invoke"))
 
     def test_delegate_to_opencode_importable(self):
         """Verify the tool can be imported."""
         from spatialagent.tool.coding import delegate_to_opencode
-        self.assertTrue(callable(delegate_to_opencode))
+        self.assertTrue(hasattr(delegate_to_opencode, "invoke"))
 
     def test_run_external_agent_file_not_found(self):
         """Test graceful handling when CLI is not installed."""
@@ -904,9 +904,9 @@ class TestToolExports(unittest.TestCase):
             delegate_to_codex,
             delegate_to_opencode,
         )
-        self.assertTrue(callable(delegate_to_claude_code))
-        self.assertTrue(callable(delegate_to_codex))
-        self.assertTrue(callable(delegate_to_opencode))
+        self.assertTrue(hasattr(delegate_to_claude_code, "invoke"))
+        self.assertTrue(hasattr(delegate_to_codex, "invoke"))
+        self.assertTrue(hasattr(delegate_to_opencode, "invoke"))
 
 
 if __name__ == "__main__":

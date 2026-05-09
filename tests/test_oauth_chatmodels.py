@@ -56,7 +56,7 @@ class TestGeminiOAuthChatModel(unittest.TestCase):
             mock_run.assert_called_once()
             args = mock_run.call_args[0][0]
             self.assertIn("gemini", args[0])
-            self.assertIn("--prompt", args)
+            self.assertNotIn("--prompt", args)
             self.assertIn("--output-format", args)
             self.assertIn("json", args)
             self.assertEqual(result.generations[0].text, "42 is the answer.")
@@ -160,12 +160,21 @@ class TestMakeLlmOAuthRouting(unittest.TestCase):
 
     def test_make_llm_oauth_not_hijacked_by_custom_base_url(self):
         from spatialagent.agent.make_llm import make_llm
-        from spatialagent.agent.oauth_chatmodels import CodexOAuthChatModel
+        from spatialagent.agent.oauth_chatmodels import CodexOAuthChatModel, GeminiOAuthChatModel
 
-        with patch.dict("os.environ", {"CUSTOM_LLM_BASE_URL": "http://localhost:9999"}):
-            result = make_llm("codex-oauth")
+        with patch.dict("os.environ", {
+            "CUSTOM_LLM_BASE_URL": "http://localhost:9999",
+            "OPENAI_BASE_URL": "http://localhost:8888",
+        }):
+            codex = make_llm("codex-oauth")
+            codex_prefixed = make_llm("codex-oauth/gpt-5.5")
+            gemini = make_llm("gemini-oauth")
+            gemini_prefixed = make_llm("gemini-oauth/gemini-2.5-pro")
 
-        self.assertIsInstance(result, CodexOAuthChatModel)
+        self.assertIsInstance(codex, CodexOAuthChatModel)
+        self.assertIsInstance(codex_prefixed, CodexOAuthChatModel)
+        self.assertIsInstance(gemini, GeminiOAuthChatModel)
+        self.assertIsInstance(gemini_prefixed, GeminiOAuthChatModel)
 
     def test_make_llm_oauth_prefix_selects_cli_model(self):
         from spatialagent.agent.make_llm import make_llm
@@ -175,3 +184,11 @@ class TestMakeLlmOAuthRouting(unittest.TestCase):
 
         self.assertEqual(codex.model, "gpt-5.5")
         self.assertEqual(gemini.model, "gemini-2.5-pro")
+
+    def test_make_llm_oauth_prefix_requires_model_name(self):
+        from spatialagent.agent.make_llm import make_llm
+
+        with self.assertRaises(ValueError):
+            make_llm("codex-oauth/")
+        with self.assertRaises(ValueError):
+            make_llm("gemini-oauth/")

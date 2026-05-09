@@ -369,7 +369,7 @@ def make_llm(
             CodexOAuthChatModel,
             DEFAULT_CODEX_OAUTH_MODEL,
         )
-        oauth_model = model.split("/", 1)[1] if "/" in model else DEFAULT_CODEX_OAUTH_MODEL
+        oauth_model = _strip_provider_prefix(model, "codex-oauth/") if "/" in model else DEFAULT_CODEX_OAUTH_MODEL
         return CodexOAuthChatModel(model=oauth_model, callbacks=callbacks, **kwargs)
 
     if model == "gemini-oauth" or model.startswith("gemini-oauth/"):
@@ -377,7 +377,7 @@ def make_llm(
             GeminiOAuthChatModel,
             DEFAULT_GEMINI_OAUTH_MODEL,
         )
-        oauth_model = model.split("/", 1)[1] if "/" in model else DEFAULT_GEMINI_OAUTH_MODEL
+        oauth_model = _strip_provider_prefix(model, "gemini-oauth/") if "/" in model else DEFAULT_GEMINI_OAUTH_MODEL
         return GeminiOAuthChatModel(model=oauth_model, callbacks=callbacks, **kwargs)
 
     # OpenAI-compatible endpoint routing (OpenRouter, z.AI, local, LiteLLM, vLLM, Ollama, etc.)

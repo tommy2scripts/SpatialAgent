@@ -1,7 +1,7 @@
 """LangChain ChatModel wrappers for OAuth-authenticated CLI tools.
 
 CodexOAuthChatModel: wraps `codex exec --json`
-GeminiOAuthChatModel: wraps `gemini --prompt`
+GeminiOAuthChatModel: wraps `gemini` with stdin
 """
 import json
 import re
@@ -210,7 +210,6 @@ class GeminiOAuthChatModel(BaseChatModel):
 
         cmd = [
             "gemini",
-            "--prompt", "",
             "--model", self.model,
             "--output-format", "json",
         ]
