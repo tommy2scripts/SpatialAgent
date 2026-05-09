@@ -23,7 +23,7 @@ class TestCodexOAuthChatModel(unittest.TestCase):
         mock_result.stdout = "Hello from Codex"
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result) as mock_run:
             result = model._generate(messages)
             mock_run.assert_called_once()
             args = mock_run.call_args[0][0]
@@ -51,7 +51,7 @@ class TestGeminiOAuthChatModel(unittest.TestCase):
         mock_result.stdout = json.dumps({"response": "42 is the answer."})
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result) as mock_run:
             result = model._generate(messages)
             mock_run.assert_called_once()
             args = mock_run.call_args[0][0]
@@ -74,7 +74,7 @@ class TestOAuthEdgeCases(unittest.TestCase):
         model = CodexOAuthChatModel(timeout=1)
         messages = [HumanMessage(content="Test prompt")]
 
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["codex"], timeout=1)):
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["codex"], timeout=1)):
             result = model._generate(messages)
             self.assertIn("ERROR", result.generations[0].text)
             self.assertIn("timed out", result.generations[0].text.lower())
@@ -87,7 +87,7 @@ class TestOAuthEdgeCases(unittest.TestCase):
         model = GeminiOAuthChatModel()
         messages = [HumanMessage(content="Test prompt")]
 
-        with patch("subprocess.run", side_effect=FileNotFoundError("gemini not found")):
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", side_effect=FileNotFoundError("gemini not found")):
             result = model._generate(messages)
             self.assertIn("ERROR", result.generations[0].text)
             self.assertIn("not found", result.generations[0].text.lower())
@@ -105,7 +105,7 @@ class TestOAuthEdgeCases(unittest.TestCase):
         mock_result.stdout = "This is not valid JSON {{broken"
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result):
             result = model._generate(messages)
             self.assertEqual(result.generations[0].text, "This is not valid JSON {{broken")
 
@@ -121,7 +121,7 @@ class TestOAuthEdgeCases(unittest.TestCase):
         mock_result.stdout = ""
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result) as mock_run:
             result = model._generate([])
             mock_run.assert_called_once()
             # Should not crash; returns AIMessage with empty content
@@ -134,7 +134,7 @@ class TestOAuthEdgeCases(unittest.TestCase):
         mock_result.stdout = '{"response": ""}'
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result) as mock_run:
             result = model._generate([])
             mock_run.assert_called_once()
             self.assertIsInstance(result.generations[0].message, AIMessage)

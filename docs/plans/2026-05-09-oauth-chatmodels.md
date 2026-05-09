@@ -2,7 +2,7 @@
 
 > **For Hermes:** Use subagent-driven-development with OpenCode Go models (TDD).
 
-**Goal:** Add CodexOAuthChatModel and GeminiOAuthChatModel — LangChain ChatModel wrappers around `codex exec` and `gemini --prompt` CLI tools, authenticated via OAuth. Register in make_llm.py as `codex-oauth` and `gemini-oauth` prefixes. Keep OpenCode Go routing unchanged.
+**Goal:** Add CodexOAuthChatModel and GeminiOAuthChatModel — LangChain ChatModel wrappers around `codex exec` and `gemini stdin` CLI tools, authenticated via OAuth. Register in make_llm.py as `codex-oauth` and `gemini-oauth` prefixes. Keep OpenCode Go routing unchanged.
 
 **Architecture:** Each ChatModel subclasses BaseChatModel, implements `_generate()` by shelling out to the CLI subprocess, parses the response, and returns ChatResult. Both follow the existing pattern: subprocess.run with timeout, capture stdout/stderr, handle errors gracefully.
 
@@ -12,7 +12,7 @@
 
 ### Task 1: Create CodexOAuthChatModel
 
-**Objective:** Build a LangChain ChatModel that wraps `codex exec --print`
+**Objective:** Build a LangChain ChatModel that wraps `codex exec --json --model <model> -`
 
 **Files:**
 - Create: `spatialagent/agent/oauth_chatmodels.py`
@@ -40,13 +40,13 @@ class TestCodexOAuthChatModel(unittest.TestCase):
         mock_result.stdout = "Hello from Codex"
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result) as mock_run:
             result = model._generate(messages)
             mock_run.assert_called_once()
             args = mock_run.call_args[0][0]
             self.assertIn("codex", args[0])
             self.assertIn("exec", args)
-            self.assertEqual(result.generations[0][0].text, "Hello from Codex")
+            self.assertEqual(result.generations[0].text, "Hello from Codex")
 ```
 
 **Step 2: Run test to verify failure**
@@ -83,8 +83,8 @@ class CodexOAuthChatModel(BaseChatModel):
     ) -> ChatResult:
         prompt = messages[-1].content if messages else ""
         
-        cmd = ["codex", "exec", "--print", "-m", self.model, prompt]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout)
+        cmd = ["codex", "exec", "--json", "--model", self.model, "-"]
+        result = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=self.timeout)
         
         text = result.stdout.strip() if result.returncode == 0 else f"ERROR: {result.stderr}"
         
@@ -107,7 +107,7 @@ git commit -m "feat: add CodexOAuthChatModel wrapping codex exec"
 
 ### Task 2: Create GeminiOAuthChatModel
 
-**Objective:** Build a LangChain ChatModel wrapping `gemini --prompt`
+**Objective:** Build a LangChain ChatModel wrapping `gemini stdin`
 
 **Step 1: Write failing test**
 
@@ -129,12 +129,12 @@ class TestGeminiOAuthChatModel(unittest.TestCase):
         mock_result.stdout = '{"response": "Hello from Gemini"}'
         mock_result.stderr = ""
         
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", return_value=mock_result) as mock_run:
             result = model._generate(messages)
             mock_run.assert_called_once()
             args = mock_run.call_args[0][0]
             self.assertIn("gemini", args[0])
-            self.assertIn("Hello from Gemini", result.generations[0][0].text)
+            self.assertIn("Hello from Gemini", result.generations[0].text)
 ```
 
 **Step 2: Run to verify failure**
@@ -161,8 +161,8 @@ class GeminiOAuthChatModel(BaseChatModel):
     
     def _generate(self, messages, stop=None, **kwargs):
         prompt = messages[-1].content if messages else ""
-        cmd = ["gemini", "--prompt", prompt, "--output-format", "json"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout)
+        cmd = ["gemini", "--model", self.model, "--output-format", "json"]
+        result = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=self.timeout)
         
         if result.returncode == 0:
             try:
@@ -250,15 +250,15 @@ git commit -m "feat: register codex-oauth and gemini-oauth in make_llm"
 class TestOAuthEdgeCases(unittest.TestCase):
     def test_codex_timeout_handled(self):
         model = CodexOAuthChatModel(timeout=1)
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("codex", 1)):
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", side_effect=subprocess.TimeoutExpired("codex", 1)):
             result = model._generate([{"role": "user", "content": "x"}])
-            self.assertIn("ERROR", result.generations[0][0].text)
+            self.assertIn("ERROR", result.generations[0].text)
 
     def test_gemini_not_installed_handled(self):
         model = GeminiOAuthChatModel()
-        with patch("subprocess.run", side_effect=FileNotFoundError("gemini")):
+        with patch("spatialagent.agent.oauth_chatmodels.subprocess.run", side_effect=FileNotFoundError("gemini")):
             result = model._generate([{"role": "user", "content": "x"}])
-            self.assertIn("ERROR", result.generations[0][0].text)
+            self.assertIn("ERROR", result.generations[0].text)
 ```
 
 **Step 2: Live smoke (manual — requires OAuth session)**
