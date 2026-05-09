@@ -4,9 +4,45 @@ from typing import Annotated, List, Dict, Any, TypedDict, Literal
 import os, re, operator, warnings, uuid, logging, signal
 warnings.filterwarnings('ignore')
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.memory import MemorySaver
+try:
+    from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+    from langgraph.graph import StateGraph, END, START
+    from langgraph.checkpoint.memory import MemorySaver
+except ImportError:  # pragma: no cover - lightweight unit-test fallback
+    class BaseMessage:
+        def __init__(self, content: str = "", **kwargs):
+            self.content = content
+
+    class HumanMessage(BaseMessage):
+        pass
+
+    class AIMessage(BaseMessage):
+        pass
+
+    class SystemMessage(BaseMessage):
+        pass
+
+    START = "__start__"
+    END = "__end__"
+
+    class StateGraph:
+        def __init__(self, state_type):
+            self.state_type = state_type
+
+        def add_node(self, *args, **kwargs):
+            return None
+
+        def add_edge(self, *args, **kwargs):
+            return None
+
+        def add_conditional_edges(self, *args, **kwargs):
+            return None
+
+        def compile(self, *args, **kwargs):
+            return self
+
+    class MemorySaver:
+        pass
 
 from .make_prompt import AgentPrompts
 from .tool_system import ToolRegistry, EmbedToolRetriever, ToolExecutor, LLMToolSelector

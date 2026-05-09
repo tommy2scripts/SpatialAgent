@@ -4,8 +4,16 @@ AWS Bedrock, and OpenAI-compatible endpoints (OpenRouter, z.AI, local gateways).
 """
 
 import os
-from langchain_core.callbacks.base import BaseCallbackHandler
-from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+
+try:
+    from langchain_core.callbacks.base import BaseCallbackHandler
+    from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+except ImportError:  # pragma: no cover - lightweight test/import fallback
+    class BaseCallbackHandler:
+        pass
+
+    class StreamingStdOutCallbackHandler:
+        pass
 
 try:
     from langchain_openai import ChatOpenAI, AzureChatOpenAI
@@ -18,7 +26,7 @@ DEFAULT_OPENAI_MODEL = "gpt-5"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
 DEFAULT_OPENCODE_GO_MODEL = "kimi-k2.6"
-DEFAULT_MAX_TOKENS = int(os.environ.get("SPATIALAGENT_MAX_TOKENS", "65536"))
+DEFAULT_MAX_TOKENS = 65536
 
 # OpenAI-compatible models that emit reasoning_content before final content.
 # If max_tokens is too small, these models can spend the whole budget on hidden
@@ -107,9 +115,9 @@ def _is_reasoning_content_model(model: str) -> bool:
     return any(pattern in model_lower for pattern in REASONING_CONTENT_MODELS)
 
 
-def _default_reasoning_max_tokens() -> int:
-    """Token budget for reasoning-content models, configurable for local gateways."""
-    raw_value = os.environ.get("SPATIALAGENT_REASONING_MAX_TOKENS", "")
+def _env_positive_int(name: str, default: int) -> int:
+    """Read a positive integer env var, falling back on missing or invalid values."""
+    raw_value = os.environ.get(name, "")
     if raw_value:
         try:
             parsed = int(raw_value)
@@ -117,7 +125,17 @@ def _default_reasoning_max_tokens() -> int:
                 return parsed
         except ValueError:
             pass
-    return DEFAULT_REASONING_MAX_TOKENS
+    return default
+
+
+def _default_max_tokens() -> int:
+    """Default completion budget for OpenAI-compatible endpoints."""
+    return _env_positive_int("SPATIALAGENT_MAX_TOKENS", DEFAULT_MAX_TOKENS)
+
+
+def _default_reasoning_max_tokens() -> int:
+    """Token budget for reasoning-content models, configurable for local gateways."""
+    return _env_positive_int("SPATIALAGENT_REASONING_MAX_TOKENS", DEFAULT_REASONING_MAX_TOKENS)
 
 
 def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict] | None:
@@ -380,7 +398,7 @@ def make_llm(
             if _is_reasoning_content_model(resolved_model):
                 model_kwargs["max_tokens"] = _default_reasoning_max_tokens()
             else:
-                model_kwargs["max_tokens"] = DEFAULT_MAX_TOKENS
+                model_kwargs["max_tokens"] = _default_max_tokens()
 
         return ChatOpenAI(**model_kwargs)
 

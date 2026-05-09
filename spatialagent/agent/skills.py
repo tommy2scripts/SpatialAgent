@@ -8,7 +8,10 @@ Templates are markdown files that guide the agent through standard workflows.
 import os
 import logging
 from typing import Dict, List, Optional
-from langchain_core.prompts import ChatPromptTemplate
+try:
+    from langchain_core.prompts import ChatPromptTemplate
+except ImportError:  # pragma: no cover - lightweight unit-test fallback
+    ChatPromptTemplate = None
 
 
 class SkillManager:

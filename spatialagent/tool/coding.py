@@ -13,8 +13,35 @@ import base64
 import glob
 from contextlib import redirect_stdout, redirect_stderr
 from typing import Annotated, Dict, Any, List, Set, Sequence
-from langchain_core.tools import tool
-from pydantic import Field
+try:
+    from langchain_core.tools import tool
+except ImportError:  # pragma: no cover - lightweight unit-test fallback
+    class _FallbackTool:
+        def __init__(self, func):
+            self.func = func
+            self.name = func.__name__
+            self.description = func.__doc__ or ""
+            self.__name__ = func.__name__
+            self.__doc__ = func.__doc__
+
+        def __call__(self, *args, **kwargs):
+            return self.func(*args, **kwargs)
+
+        def invoke(self, input=None, **kwargs):
+            if isinstance(input, dict):
+                return self.func(**input)
+            if input is None:
+                return self.func(**kwargs)
+            return self.func(input)
+
+    def tool(func):
+        return _FallbackTool(func)
+
+try:
+    from pydantic import Field
+except ImportError:  # pragma: no cover - lightweight unit-test fallback
+    def Field(*args, **kwargs):
+        return None
 
 
 # =============================================================================

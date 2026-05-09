@@ -9,6 +9,7 @@ Covers:
 
 import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 from unittest.mock import patch, MagicMock
@@ -91,10 +92,6 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
         with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
             mock_chat.return_value = MagicMock()
 
-            # Need to reimport after env change
-            import importlib
-            import spatialagent.agent.make_llm as make_llm_module
-            importlib.reload(make_llm_module)
             from spatialagent.agent.make_llm import make_llm
 
             make_llm("gemini-3-pro-preview", track_cost=False)
@@ -110,9 +107,6 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
         with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
             mock_chat.return_value = MagicMock()
 
-            import importlib
-            import spatialagent.agent.make_llm as make_llm_module
-            importlib.reload(make_llm_module)
             from spatialagent.agent.make_llm import make_llm
 
             make_llm("gemini-2.5-pro", track_cost=False)
@@ -129,9 +123,6 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
         with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
             mock_chat.return_value = MagicMock()
 
-            import importlib
-            import spatialagent.agent.make_llm as make_llm_module
-            importlib.reload(make_llm_module)
             from spatialagent.agent.make_llm import make_llm
 
             make_llm("gemini-3-flash-preview", track_cost=False)
@@ -147,9 +138,6 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
         with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
             mock_chat.return_value = MagicMock()
 
-            import importlib
-            import spatialagent.agent.make_llm as make_llm_module
-            importlib.reload(make_llm_module)
             from spatialagent.agent.make_llm import make_llm
 
             make_llm("gemini-3-pro-preview", track_cost=False)
@@ -216,6 +204,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             "ZAI_API_KEY", "ZAI_BASE_URL",
             "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL", "OPENCODE_GO_MODEL",
             "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
+            "SPATIALAGENT_MAX_TOKENS", "SPATIALAGENT_REASONING_MAX_TOKENS",
         ]:
             self._original_env[key] = os.environ.get(key)
 
@@ -234,6 +223,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             "ZAI_API_KEY", "ZAI_BASE_URL",
             "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL", "OPENCODE_GO_MODEL",
             "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
+            "SPATIALAGENT_MAX_TOKENS", "SPATIALAGENT_REASONING_MAX_TOKENS",
         ]:
             os.environ.pop(key, None)
 
@@ -280,6 +270,27 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
         self.assertEqual(base_url, "http://localhost:8080/v1")
         self.assertEqual(api_key, "sk-local-key")
 
+    def test_strip_provider_prefix_helper(self):
+        """Provider prefix stripping should return the suffix and reject empty suffixes."""
+        from spatialagent.agent.make_llm import _strip_provider_prefix
+
+        self.assertEqual(
+            _strip_provider_prefix("openrouter/anthropic/claude-sonnet-4-5", "openrouter/"),
+            "anthropic/claude-sonnet-4-5",
+        )
+        with self.assertRaises(ValueError):
+            _strip_provider_prefix("openrouter/", "openrouter/")
+
+    def test_native_provider_model_detection(self):
+        """Native model families should not be captured by generic compatible gateways."""
+        from spatialagent.agent.make_llm import _is_native_provider_model
+
+        self.assertTrue(_is_native_provider_model("gemini-3-pro-preview"))
+        self.assertTrue(_is_native_provider_model("claude-sonnet-4-5-20250929"))
+        self.assertTrue(_is_native_provider_model("us.anthropic.claude-sonnet-4-5-20250929-v1:0"))
+        self.assertFalse(_is_native_provider_model("opencode-go/kimi-k2.6"))
+        self.assertFalse(_is_native_provider_model("openrouter/anthropic/claude-sonnet-4-5"))
+
     def test_opencode_go_prefix_resolves_model_name_and_key(self):
         """opencode-go/ prefix should use its provider endpoint and key."""
         self._clear()
@@ -316,6 +327,36 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
         from spatialagent.agent.make_llm import _resolve_openai_compatible_routing
 
         result = _resolve_openai_compatible_routing("opencode-go")
+        self.assertIsNotNone(result)
+        resolved_model, base_url, api_key, headers = result
+        self.assertEqual(resolved_model, "kimi-k2.6")
+        self.assertEqual(base_url, "https://opencode.ai/zen/go/v1")
+        self.assertEqual(api_key, "sk-opencode-go-key")
+
+    def test_opencode_go_bare_alias_respects_model_env_override(self):
+        """Bare opencode-go should allow OPENCODE_GO_MODEL to select the backend."""
+        self._clear()
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
+        os.environ["OPENCODE_GO_MODEL"] = "qwen3.6-plus"
+
+        from spatialagent.agent.make_llm import _resolve_openai_compatible_routing
+
+        result = _resolve_openai_compatible_routing("opencode-go")
+        self.assertIsNotNone(result)
+        resolved_model, base_url, api_key, headers = result
+        self.assertEqual(resolved_model, "qwen3.6-plus")
+        self.assertEqual(base_url, "https://opencode.ai/zen/go/v1")
+        self.assertEqual(api_key, "sk-opencode-go-key")
+
+    def test_opencode_go_key_takes_precedence_over_openrouter_key(self):
+        """Explicit OpenCode Go credentials should win when both key env vars exist."""
+        self._clear()
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
+        os.environ["OPENROUTER_API_KEY"] = "sk-openrouter-fallback"
+
+        from spatialagent.agent.make_llm import _resolve_openai_compatible_routing
+
+        result = _resolve_openai_compatible_routing("opencode-go/kimi-k2.6")
         self.assertIsNotNone(result)
         resolved_model, base_url, api_key, headers = result
         self.assertEqual(resolved_model, "kimi-k2.6")
@@ -389,6 +430,34 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
         self.assertTrue(_is_reasoning_content_model("deepseek-r1"))
         self.assertFalse(_is_reasoning_content_model("kimi-k2.6"))
 
+    def test_default_reasoning_max_tokens_env_override(self):
+        """Reasoning max-token fallback should be env-configurable and robust."""
+        from spatialagent.agent.make_llm import _default_reasoning_max_tokens
+
+        self._clear()
+        os.environ["SPATIALAGENT_REASONING_MAX_TOKENS"] = "49152"
+        self.assertEqual(_default_reasoning_max_tokens(), 49152)
+
+        os.environ["SPATIALAGENT_REASONING_MAX_TOKENS"] = "not-an-int"
+        self.assertEqual(_default_reasoning_max_tokens(), 32768)
+
+        os.environ["SPATIALAGENT_REASONING_MAX_TOKENS"] = "-1"
+        self.assertEqual(_default_reasoning_max_tokens(), 32768)
+
+    def test_default_max_tokens_env_parsing(self):
+        """SPATIALAGENT_MAX_TOKENS should accept positive ints and ignore bad values."""
+        from spatialagent.agent.make_llm import _default_max_tokens
+
+        self._clear()
+        os.environ["SPATIALAGENT_MAX_TOKENS"] = "24576"
+        self.assertEqual(_default_max_tokens(), 24576)
+
+        os.environ["SPATIALAGENT_MAX_TOKENS"] = "not-an-int"
+        self.assertEqual(_default_max_tokens(), 65536)
+
+        os.environ["SPATIALAGENT_MAX_TOKENS"] = "0"
+        self.assertEqual(_default_max_tokens(), 65536)
+
     def test_opencode_go_reasoning_model_gets_larger_default_token_budget(self):
         """deepseek-v4-flash needs extra completion budget for reasoning_content."""
         self._clear()
@@ -418,8 +487,8 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             call_kwargs = mock_chat.call_args.kwargs
             self.assertEqual(call_kwargs.get("max_tokens"), 65536)
 
-    def test_opencode_go_non_reasoning_model_does_not_force_token_budget(self):
-        """Non-reasoning OpenCode Go models should not get a hidden max_tokens override."""
+    def test_opencode_go_non_reasoning_model_uses_default_token_budget(self):
+        """Non-reasoning OpenCode Go models should use the global completion budget."""
         self._clear()
         os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
 
@@ -430,7 +499,37 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             make_llm("opencode-go/kimi-k2.6", track_cost=False)
 
             call_kwargs = mock_chat.call_args.kwargs
-            self.assertNotIn("max_tokens", call_kwargs)
+            self.assertEqual(call_kwargs.get("max_tokens"), 65536)
+
+    def test_opencode_go_non_reasoning_model_respects_max_tokens_env_override(self):
+        """SPATIALAGENT_MAX_TOKENS should affect OpenAI-compatible non-reasoning calls."""
+        self._clear()
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
+        os.environ["SPATIALAGENT_MAX_TOKENS"] = "24576"
+
+        with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
+            mock_chat.return_value = MagicMock()
+
+            from spatialagent.agent.make_llm import make_llm
+            make_llm("opencode-go/kimi-k2.6", track_cost=False)
+
+            call_kwargs = mock_chat.call_args.kwargs
+            self.assertEqual(call_kwargs.get("max_tokens"), 24576)
+
+    def test_opencode_go_non_reasoning_model_ignores_invalid_max_tokens_env(self):
+        """Invalid SPATIALAGENT_MAX_TOKENS values should not break LLM construction."""
+        self._clear()
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
+        os.environ["SPATIALAGENT_MAX_TOKENS"] = "not-an-int"
+
+        with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
+            mock_chat.return_value = MagicMock()
+
+            from spatialagent.agent.make_llm import make_llm
+            make_llm("opencode-go/kimi-k2.6", track_cost=False)
+
+            call_kwargs = mock_chat.call_args.kwargs
+            self.assertEqual(call_kwargs.get("max_tokens"), 65536)
 
 
 # =============================================================================
@@ -578,6 +677,20 @@ class TestExternalCodingAgentTools(unittest.TestCase):
             ["custom-agent", "--flag", "test task"],
         )
 
+    def test_agent_command_registry_covers_supported_clis(self):
+        """The command registry should explicitly cover each public delegate CLI."""
+        from spatialagent.tool.coding import _AGENT_COMMANDS
+
+        self.assertEqual(set(_AGENT_COMMANDS), {"claude", "codex", "opencode"})
+        self.assertEqual(_AGENT_COMMANDS["claude"]("task"), ["claude", "--print", "task"])
+        self.assertEqual(_AGENT_COMMANDS["opencode"]("task"), ["opencode", "run", "task"])
+
+        with patch.dict(os.environ, {"CODEX_MODEL": "gpt-5-codex"}, clear=False):
+            self.assertEqual(
+                _AGENT_COMMANDS["codex"]("task"),
+                ["codex", "exec", "--skip-git-repo-check", "-m", "gpt-5-codex", "task"],
+            )
+
     def test_agent_command_builder_rejects_empty_sequence(self):
         """Empty argv prefixes should fail before subprocess execution."""
         from spatialagent.tool.coding import _build_external_agent_command
@@ -635,6 +748,31 @@ class TestExternalCodingAgentTools(unittest.TestCase):
             self.assertFalse(result["success"])
             self.assertIn("Exit code 1", result["error"])
 
+    def test_format_external_agent_result_success(self):
+        """Successful co-agent output should be returned without an ERROR marker."""
+        from spatialagent.tool.coding import _format_external_agent_result
+
+        result = _format_external_agent_result(
+            "Codex",
+            {"success": True, "output": "changed tests", "error": None},
+        )
+
+        self.assertEqual(result, "Codex completed the task:\n\nchanged tests")
+        self.assertNotIn("ERROR:", result)
+
+    def test_format_external_agent_result_failure(self):
+        """Failed co-agent output should include a visible ERROR marker and stdout."""
+        from spatialagent.tool.coding import _format_external_agent_result
+
+        result = _format_external_agent_result(
+            "OpenCode",
+            {"success": False, "output": "partial output", "error": "Exit code 1"},
+        )
+
+        self.assertIn("ERROR: OpenCode failed: Exit code 1", result)
+        self.assertIn("Output:\npartial output", result)
+        self.assertIn("The co-agent task did not complete", result)
+
     def test_delegate_failure_is_marked_as_observable_error(self):
         """Delegate tools should return an ERROR string that survives the act observation."""
         from spatialagent.tool.coding import delegate_to_codex
@@ -682,6 +820,66 @@ class TestExternalCodingAgentTools(unittest.TestCase):
                 "Result: 'ERROR: Codex failed: codex not found'"
             )
         )
+
+    def test_spatialagent_observation_failure_detector_ignores_success_text(self):
+        """Normal observations and non-string results should not be marked as failures."""
+        from spatialagent.agent.spatialagent import SpatialAgent
+
+        self.assertFalse(SpatialAgent._observation_indicates_failure("Codex completed the task"))
+        self.assertFalse(SpatialAgent._observation_indicates_failure({"error": "not a string"}))
+
+
+# =============================================================================
+# Test: SpatialAgent integration with routed models
+# =============================================================================
+
+class TestSpatialAgentModelIntegration(unittest.TestCase):
+    """Test that routed LLMs keep the resolved model name when installed in SpatialAgent."""
+
+    def setUp(self):
+        self._original_env = {}
+        for key in [
+            "OPENCODE_GO_API_KEY",
+            "SPATIALAGENT_MAX_TOKENS",
+            "SPATIALAGENT_REASONING_MAX_TOKENS",
+        ]:
+            self._original_env[key] = os.environ.get(key)
+
+    def tearDown(self):
+        for key, value in self._original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_spatialagent_uses_resolved_opencode_go_model_name(self):
+        """A make_llm("opencode-go/...") instance should register its backend model in the agent loop."""
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
+
+        llm = MagicMock()
+        llm.model_name = "deepseek-v4-flash"
+        llm.callbacks = []
+
+        with patch("spatialagent.agent.make_llm.ChatOpenAI", return_value=llm) as mock_chat:
+            from spatialagent.agent.make_llm import make_llm
+            from spatialagent.agent.spatialagent import SpatialAgent
+            from spatialagent.agent import get_agent_model
+
+            routed_llm = make_llm("opencode-go/deepseek-v4-flash", track_cost=False)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                agent = SpatialAgent(
+                    llm=routed_llm,
+                    tools=[],
+                    data_path=os.path.join(tmpdir, "data"),
+                    save_path=os.path.join(tmpdir, "experiments"),
+                    tool_retrieval=False,
+                    skill_retrieval=False,
+                )
+
+            call_kwargs = mock_chat.call_args.kwargs
+            self.assertEqual(call_kwargs.get("model"), "deepseek-v4-flash")
+            self.assertEqual(agent.llm, routed_llm)
+            self.assertEqual(get_agent_model(), "deepseek-v4-flash")
 
 
 # =============================================================================

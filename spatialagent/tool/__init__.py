@@ -1,215 +1,106 @@
 """
 Modern function-based tools for SpatialAgent.
 
-All tools use simple functions with @tool decorator instead of classes.
-Organized by functional type: databases, analytics, interpretation, literature, coding, and foundry.
-
-Note: Most tools are direct @tool decorated functions. Coding tools use creator functions
-because they need initialization parameters (save_path, data_path).
+Exports are resolved lazily so lightweight imports such as
+``from spatialagent.tool import delegate_to_codex`` do not require the full
+scientific analysis stack.
 """
 
-# Database & Reference Query Tools (direct @tool functions)
-from .databases import (
-    search_panglao,
-    search_cellmarker2,
-    search_czi_datasets,
-    extract_czi_markers,
-    download_czi_reference,
-    query_tissue_expression,
-    query_celltype_genesets,
-    validate_genes_expression,
-    query_disease_genes,
-)
-
-# Literature Research Tools (direct @tool functions)
-from .literature import (
-    query_pubmed,
-    query_arxiv,
-    search_semantic_scholar,
-    web_search,  # Unified web search using Anthropic/OpenAI/Google server-side tools
-    # query_scholar,  # Disabled - hangs due to Google Scholar rate limits
-    # search_duckduckgo,  # Disabled - blocked on many networks, overlaps with academic search
-    extract_url_content,
-    extract_pdf_content,
-    fetch_supplementary_from_doi,
-)
-
-# Computational & Statistical Analysis Tools (direct @tool functions)
-from .analytics import (
-    preprocess_spatial_data,
-    harmony_transfer_labels,
-    run_utag_clustering,
-    aggregate_gene_voting,
-    infer_dynamics,
-    summarize_conditions,
-    summarize_celltypes,
-    summarize_tissue_regions,
-    # Tangram tools
-    tangram_preprocess,
-    tangram_map_cells,
-    tangram_project_annotations,
-    tangram_project_genes,
-    tangram_evaluate,
-    # CellPhoneDB tools
-    cellphonedb_prepare,
-    cellphonedb_analysis,
-    cellphonedb_degs_analysis,
-    cellphonedb_filter,
-    cellphonedb_plot,
-    # LIANA tools
-    liana_tensor,
-    liana_inference,
-    liana_spatial,
-    liana_misty,
-    liana_plot,
-    # Squidpy tools
-    squidpy_spatial_neighbors,
-    squidpy_nhood_enrichment,
-    squidpy_co_occurrence,
-    squidpy_spatial_autocorr,
-    squidpy_ripley,
-    squidpy_centrality,
-    squidpy_interaction_matrix,
-    squidpy_ligrec,
-    # scvi-tools spatial deconvolution
-    destvi_deconvolution,
-    cell2location_mapping,
-    stereoscope_deconvolution,
-    gimvi_imputation,
-    # Spatial domain detection (SpaGCN, GraphST)
-    spagcn_clustering,
-    graphst_clustering,
-    # Scanpy tools
-    scanpy_score_genes,
-    scanpy_ingest,
-    scanpy_bbknn,
-    # Trajectory inference
-    scvelo_velocity,
-    scvelo_velocity_embedding,
-    cellrank_terminal_states,
-    cellrank_fate_probabilities,
-    paga_trajectory,
-    # Multimodal integration
-    totalvi_integration,
-    multivi_integration,
-    mofa_integration,
-)
-
-# LLM-Powered Interpretation Tools (direct @tool functions)
-from .interpretation import (
-    annotate_cell_types,
-    annotate_tissue_niches,
-    interpret_figure,
-)
-
-# Subagent Tools (autonomous multi-step analysis)
-from .subagent import (
-    report_subagent,
-    verification_subagent,
-)
-
-# CodeAct: Python REPL and Bash (creator functions - need initialization)
-from .coding import create_python_repl_tool, create_bash_tool
-
-# External coding agents (delegate tasks to Claude Code, Codex, OpenCode)
-from .coding import delegate_to_claude_code, delegate_to_codex, delegate_to_opencode
-
-# Code inspection: Retrieve and adapt tool source code (direct @tool function)
-from .foundry import inspect_tool_code
-
-__all__ = [
+_EXPORT_MODULES = {
     # Database Tools
-    "search_panglao",
-    "search_cellmarker2",
-    "search_czi_datasets",
-    "extract_czi_markers",
-    "download_czi_reference",
-    "query_tissue_expression",
-    "query_celltype_genesets",
-    "validate_genes_expression",
-    "query_disease_genes",
+    "search_panglao": "databases",
+    "search_cellmarker2": "databases",
+    "search_czi_datasets": "databases",
+    "extract_czi_markers": "databases",
+    "download_czi_reference": "databases",
+    "query_tissue_expression": "databases",
+    "query_celltype_genesets": "databases",
+    "validate_genes_expression": "databases",
+    "query_disease_genes": "databases",
     # Literature Research Tools
-    "query_pubmed",
-    "query_arxiv",
-    "search_semantic_scholar",
-    "web_search",
-    # "query_scholar",  # Disabled
-    # "search_duckduckgo",  # Disabled
-    "extract_url_content",
-    "extract_pdf_content",
-    "fetch_supplementary_from_doi",
+    "query_pubmed": "literature",
+    "query_arxiv": "literature",
+    "search_semantic_scholar": "literature",
+    "web_search": "literature",
+    "extract_url_content": "literature",
+    "extract_pdf_content": "literature",
+    "fetch_supplementary_from_doi": "literature",
     # Analytics Tools
-    "preprocess_spatial_data",
-    "harmony_transfer_labels",
-    "run_utag_clustering",
-    "aggregate_gene_voting",
-    "infer_dynamics",
-    "summarize_conditions",
-    "summarize_celltypes",
-    "summarize_tissue_regions",
-    # Tangram Tools
-    "tangram_preprocess",
-    "tangram_map_cells",
-    "tangram_project_annotations",
-    "tangram_project_genes",
-    "tangram_evaluate",
-    # CellPhoneDB Tools
-    "cellphonedb_prepare",
-    "cellphonedb_analysis",
-    "cellphonedb_degs_analysis",
-    "cellphonedb_filter",
-    "cellphonedb_plot",
-    # LIANA Tools
-    "liana_tensor",
-    "liana_inference",
-    "liana_spatial",
-    "liana_misty",
-    "liana_plot",
-    # Squidpy Tools
-    "squidpy_spatial_neighbors",
-    "squidpy_nhood_enrichment",
-    "squidpy_co_occurrence",
-    "squidpy_spatial_autocorr",
-    "squidpy_ripley",
-    "squidpy_centrality",
-    "squidpy_interaction_matrix",
-    "squidpy_ligrec",
-    # scvi-tools Spatial Deconvolution
-    "destvi_deconvolution",
-    "cell2location_mapping",
-    "stereoscope_deconvolution",
-    "gimvi_imputation",
-    # Spatial Domain Detection
-    "spagcn_clustering",
-    "graphst_clustering",
-    # Scanpy Tools
-    "scanpy_score_genes",
-    "scanpy_ingest",
-    "scanpy_bbknn",
-    # Trajectory Inference
-    "scvelo_velocity",
-    "scvelo_velocity_embedding",
-    "cellrank_terminal_states",
-    "cellrank_fate_probabilities",
-    "paga_trajectory",
-    # Multimodal Integration
-    "totalvi_integration",
-    "multivi_integration",
-    "mofa_integration",
+    "preprocess_spatial_data": "analytics",
+    "harmony_transfer_labels": "analytics",
+    "run_utag_clustering": "analytics",
+    "aggregate_gene_voting": "analytics",
+    "infer_dynamics": "analytics",
+    "summarize_conditions": "analytics",
+    "summarize_celltypes": "analytics",
+    "summarize_tissue_regions": "analytics",
+    "tangram_preprocess": "analytics",
+    "tangram_map_cells": "analytics",
+    "tangram_project_annotations": "analytics",
+    "tangram_project_genes": "analytics",
+    "tangram_evaluate": "analytics",
+    "cellphonedb_prepare": "analytics",
+    "cellphonedb_analysis": "analytics",
+    "cellphonedb_degs_analysis": "analytics",
+    "cellphonedb_filter": "analytics",
+    "cellphonedb_plot": "analytics",
+    "liana_tensor": "analytics",
+    "liana_inference": "analytics",
+    "liana_spatial": "analytics",
+    "liana_misty": "analytics",
+    "liana_plot": "analytics",
+    "squidpy_spatial_neighbors": "analytics",
+    "squidpy_nhood_enrichment": "analytics",
+    "squidpy_co_occurrence": "analytics",
+    "squidpy_spatial_autocorr": "analytics",
+    "squidpy_ripley": "analytics",
+    "squidpy_centrality": "analytics",
+    "squidpy_interaction_matrix": "analytics",
+    "squidpy_ligrec": "analytics",
+    "destvi_deconvolution": "analytics",
+    "cell2location_mapping": "analytics",
+    "stereoscope_deconvolution": "analytics",
+    "gimvi_imputation": "analytics",
+    "spagcn_clustering": "analytics",
+    "graphst_clustering": "analytics",
+    "scanpy_score_genes": "analytics",
+    "scanpy_ingest": "analytics",
+    "scanpy_bbknn": "analytics",
+    "scvelo_velocity": "analytics",
+    "scvelo_velocity_embedding": "analytics",
+    "cellrank_terminal_states": "analytics",
+    "cellrank_fate_probabilities": "analytics",
+    "paga_trajectory": "analytics",
+    "totalvi_integration": "analytics",
+    "multivi_integration": "analytics",
+    "mofa_integration": "analytics",
     # Interpretation Tools
-    "annotate_cell_types",
-    "annotate_tissue_niches",
-    "interpret_figure",
+    "annotate_cell_types": "interpretation",
+    "annotate_tissue_niches": "interpretation",
+    "interpret_figure": "interpretation",
     # Subagent Tools
-    "report_subagent",
-    "verification_subagent",
-    # CodeAct (creator functions)
-    "create_python_repl_tool",
-    "create_bash_tool",
-    # External Coding Agents
-    "delegate_to_claude_code",
-    "delegate_to_codex",
-    "delegate_to_opencode",
+    "report_subagent": "subagent",
+    "verification_subagent": "subagent",
+    # CodeAct and external coding agents
+    "create_python_repl_tool": "coding",
+    "create_bash_tool": "coding",
+    "delegate_to_claude_code": "coding",
+    "delegate_to_codex": "coding",
+    "delegate_to_opencode": "coding",
     # Support
-    "inspect_tool_code",
-]
+    "inspect_tool_code": "foundry",
+}
+
+__all__ = list(_EXPORT_MODULES)
+
+
+def __getattr__(name):
+    if name not in _EXPORT_MODULES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    from importlib import import_module
+
+    module = import_module(f".{_EXPORT_MODULES[name]}", __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
