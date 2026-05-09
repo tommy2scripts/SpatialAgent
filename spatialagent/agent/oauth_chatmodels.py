@@ -43,3 +43,45 @@ class CodexOAuthChatModel(BaseChatModel):
         return ChatResult(
             generations=[ChatGeneration(message=AIMessage(content=text))]
         )
+
+
+class GeminiOAuthChatModel(BaseChatModel):
+    """LangChain ChatModel wrapping Gemini CLI via OAuth."""
+
+    model: str = "gemini-3-pro-preview"
+    timeout: int = 300
+
+    @property
+    def _llm_type(self) -> str:
+        return "gemini-oauth"
+
+    def _generate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        prompt = messages[-1].content if messages else ""
+
+        cmd = [
+            "gemini",
+            "--prompt", prompt,
+            "--output-format", "json",
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=self.timeout
+        )
+
+        if result.returncode == 0:
+            try:
+                import json
+                parsed = json.loads(result.stdout)
+                text = parsed.get("response", result.stdout.strip())
+            except json.JSONDecodeError:
+                text = result.stdout.strip()
+        else:
+            text = f"ERROR: {result.stderr}"
+
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content=text))]
+        )
