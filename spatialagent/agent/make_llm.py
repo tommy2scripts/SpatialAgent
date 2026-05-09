@@ -96,6 +96,10 @@ def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict]
         resolved_model = model.split("/", 1)[1]
         custom_base_url = custom_base_url or os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
         custom_api_key = os.environ.get("ZAI_API_KEY", custom_api_key)
+    elif model.startswith("opencode-go/"):
+        resolved_model = model.split("/", 1)[1]
+        custom_base_url = custom_base_url or os.environ.get("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+        custom_api_key = os.environ.get("OPENCODE_GO_API_KEY", "EMPTY")
     elif model.startswith("local/"):
         resolved_model = model.split("/", 1)[1]
         custom_base_url = custom_base_url or os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
@@ -304,11 +308,18 @@ def make_llm(
         # Stop sequences for Gemini
         stop_sequences = kwargs.pop("stop_sequences", DEFAULT_STOP_SEQUENCES)
 
+        # Use ONLY Gemini-specific API keys -- never fall back to generic/OpenAI keys
+        gemini_api_key = (
+            os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or "EMPTY"
+        )
+
         return ChatOpenAI(
             model=model,
             temperature=temperature,
             streaming=streaming,
-            api_key=os.environ.get("GEMINI_API_KEY"),
+            api_key=gemini_api_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             callbacks=callbacks,
             stop=stop_sequences,
