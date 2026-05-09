@@ -426,6 +426,19 @@ def _run_external_agent(cli_command: str | Sequence[str], task: str, timeout: in
         }
 
 
+def _format_external_agent_result(agent_name: str, result: Dict[str, Any]) -> str:
+    """Format co-agent output so failures are visible in <observation> text."""
+    if result["success"]:
+        return f"{agent_name} completed the task:\n\n{result['output']}"
+
+    output = result.get("output") or "(no output)"
+    return (
+        f"ERROR: {agent_name} failed: {result['error']}\n\n"
+        f"Output:\n{output}\n\n"
+        "The co-agent task did not complete. Inspect the error above before retrying."
+    )
+
+
 @tool
 def delegate_to_claude_code(
     task: Annotated[str, Field(description="Task description for Claude Code to execute")],
@@ -441,11 +454,7 @@ def delegate_to_claude_code(
     such as refactoring, debugging, or implementing features across multiple files.
     """
     result = _run_external_agent("claude", task, timeout)
-
-    if result["success"]:
-        return f"Claude Code completed the task:\n\n{result['output']}"
-    else:
-        return f"Claude Code failed: {result['error']}\n\nOutput:\n{result['output']}"
+    return _format_external_agent_result("Claude Code", result)
 
 
 @tool
@@ -463,11 +472,7 @@ def delegate_to_codex(
     such as algorithm design, code review, or generating test suites.
     """
     result = _run_external_agent("codex", task, timeout)
-
-    if result["success"]:
-        return f"Codex completed the task:\n\n{result['output']}"
-    else:
-        return f"Codex failed: {result['error']}\n\nOutput:\n{result['output']}"
+    return _format_external_agent_result("Codex", result)
 
 
 @tool
@@ -485,11 +490,7 @@ def delegate_to_opencode(
     such as quick scripts, file manipulation, or code exploration.
     """
     result = _run_external_agent("opencode", task, timeout)
-
-    if result["success"]:
-        return f"OpenCode completed the task:\n\n{result['output']}"
-    else:
-        return f"OpenCode failed: {result['error']}\n\nOutput:\n{result['output']}"
+    return _format_external_agent_result("OpenCode", result)
 
 
 # =============================================================================

@@ -17,6 +17,17 @@ except ImportError:  # pragma: no cover - surfaced when make_llm uses these prov
 DEFAULT_OPENAI_MODEL = "gpt-5"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
+DEFAULT_OPENCODE_GO_MODEL = "kimi-k2.6"
+
+# OpenAI-compatible models that emit reasoning_content before final content.
+# If max_tokens is too small, these models can spend the whole budget on hidden
+# reasoning and return no parseable <act>/<conclude> content to the agent loop.
+REASONING_CONTENT_MODELS = (
+    "deepseek-v4-flash",
+    "deepseek-r1",
+    "deepseek-reasoner",
+)
+DEFAULT_REASONING_MAX_TOKENS = 32768
 
 # Default stop sequences - prevent multiple action blocks and observation hallucination
 DEFAULT_STOP_SEQUENCES = ["</act>", "</conclude>"]
@@ -74,6 +85,25 @@ def _strip_provider_prefix(model: str, prefix: str) -> str:
     return resolved_model
 
 
+def _is_reasoning_content_model(model: str) -> bool:
+    """Return True for models known to emit reasoning_content before content."""
+    model_lower = model.lower()
+    return any(pattern in model_lower for pattern in REASONING_CONTENT_MODELS)
+
+
+def _default_reasoning_max_tokens() -> int:
+    """Token budget for reasoning-content models, configurable for local gateways."""
+    raw_value = os.environ.get("SPATIALAGENT_REASONING_MAX_TOKENS", "")
+    if raw_value:
+        try:
+            parsed = int(raw_value)
+            if parsed > 0:
+                return parsed
+        except ValueError:
+            pass
+    return DEFAULT_REASONING_MAX_TOKENS
+
+
 def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict] | None:
     """Resolve routing for OpenAI-compatible endpoints.
 
@@ -98,6 +128,14 @@ def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict]
         resolved_model = _strip_provider_prefix(model, "zai/")
         custom_base_url = os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
         custom_api_key = os.environ.get("ZAI_API_KEY", "EMPTY")
+    elif model == "opencode-go":
+        resolved_model = os.environ.get("OPENCODE_GO_MODEL", DEFAULT_OPENCODE_GO_MODEL)
+        custom_base_url = os.environ.get("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+        custom_api_key = (
+            os.environ.get("OPENCODE_GO_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
+            or "EMPTY"
+        )
     elif model.startswith("opencode-go/"):
         resolved_model = _strip_provider_prefix(model, "opencode-go/")
         custom_base_url = os.environ.get("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
@@ -318,6 +356,9 @@ def make_llm(
 
         if not resolved_model.startswith(("o3", "o4")):
             model_kwargs["temperature"] = temperature
+
+        if _is_reasoning_content_model(resolved_model) and "max_tokens" not in model_kwargs:
+            model_kwargs["max_tokens"] = _default_reasoning_max_tokens()
 
         return ChatOpenAI(**model_kwargs)
 
