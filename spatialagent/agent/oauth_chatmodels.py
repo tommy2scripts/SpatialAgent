@@ -1,8 +1,9 @@
 """LangChain ChatModel wrappers for OAuth-authenticated CLI tools.
 
-CodexOAuthChatModel: wraps `codex exec --print`
+CodexOAuthChatModel: wraps `codex exec --json`
 GeminiOAuthChatModel: wraps `gemini --prompt`
 """
+import json
 import subprocess
 from typing import Any, List, Optional
 
@@ -12,7 +13,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 
 
 class CodexOAuthChatModel(BaseChatModel):
-    """LangChain ChatModel wrapping Codex CLI via OAuth."""
+    """LangChain ChatModel wrapping Codex CLI via OAuth (codex exec --json)."""
 
     model: str = "gpt-5.5"
     timeout: int = 300
@@ -29,7 +30,7 @@ class CodexOAuthChatModel(BaseChatModel):
     ) -> ChatResult:
         prompt = messages[-1].content if messages else ""
 
-        cmd = ["codex", "exec", "--print", "-m", self.model, prompt]
+        cmd = ["codex", "exec", "--json", "-c", f"model={self.model}", prompt]
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=self.timeout
@@ -47,11 +48,27 @@ class CodexOAuthChatModel(BaseChatModel):
                 )]
             )
 
-        text = (
-            result.stdout.strip()
-            if result.returncode == 0
-            else f"ERROR: {result.stderr}"
-        )
+        if result.returncode != 0:
+            return ChatResult(
+                generations=[ChatGeneration(
+                    message=AIMessage(content=f"ERROR: {result.stderr}")
+                )]
+            )
+
+        # Parse JSONL output — extract final agent_message text
+        text = ""
+        for line in result.stdout.strip().split("\n"):
+            try:
+                event = json.loads(line)
+                if event.get("type") == "item.completed":
+                    item = event.get("item", {})
+                    if item.get("type") == "agent_message":
+                        text = item.get("text", "")
+            except json.JSONDecodeError:
+                continue
+
+        if not text:
+            text = result.stdout.strip()
 
         return ChatResult(
             generations=[ChatGeneration(message=AIMessage(content=text))]
@@ -100,7 +117,6 @@ class GeminiOAuthChatModel(BaseChatModel):
 
         if result.returncode == 0:
             try:
-                import json
                 parsed = json.loads(result.stdout)
                 text = parsed.get("response", result.stdout.strip())
             except json.JSONDecodeError:
