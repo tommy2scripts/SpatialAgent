@@ -1,0 +1,19 @@
+# SpatialAgent OpenCode Go + Codex Harness Plan
+
+**Goal:** Modify SpatialAgent to use OpenCode Go as the primary LLM backend (avoiding Gemini rate limits), while maintaining Gemini as an option. Wrap Codex and OpenCode CLIs as SpatialAgent tools. Validate everything via the Ralph Wiggum iterative loop.
+
+### Task 1: Update LLM Routing (make_llm.py)
+Inject OpenCode Go routing into `_resolve_openai_compatible_routing`.
+- Prefix: `opencode-go/`
+- Base URL: `https://opencode.ai/zen/go/v1`
+- Auth: `OPENCODE_GO_API_KEY`
+
+### Task 2: Build Co-Agent Tool Wrappers
+Create LangChain tools wrapping Codex and OpenCode CLI to be injected into SpatialAgent's `AVAILABLE_TOOLS`.
+- `spatialagent/tool/coagents/codex_wrapper.py`
+- `spatialagent/tool/coagents/opencode_wrapper.py`
+
+### Task 3: Execute Ralph Loop (Iterative Improvement)
+- **Pass 1:** Run Codex 5.5 (`codex exec -m gpt-5.5 --full-auto`) to review the `make_llm.py` and tool wrapper code for bugs and edge cases.
+- **Pass 2:** MoA Panel review using OpenCode Go models (`deepseek-v4-pro`, `qwen3.6-plus`, `kimi-k2.6`) with Codex 5.5 aggregator to rank top architectural issues.
+- **Pass 3:** Apply fixes and verify syntax/tests.
