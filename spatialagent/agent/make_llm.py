@@ -361,6 +361,25 @@ def make_llm(
     if track_cost:
         callbacks.append(CostCallback(model))
 
+    # OAuth-authenticated CLI tool backends. Keep this before generic
+    # OpenAI-compatible routing so CUSTOM_LLM_BASE_URL/OPENAI_BASE_URL cannot
+    # accidentally capture these explicit backend names.
+    if model == "codex-oauth" or model.startswith("codex-oauth/"):
+        from spatialagent.agent.oauth_chatmodels import (
+            CodexOAuthChatModel,
+            DEFAULT_CODEX_OAUTH_MODEL,
+        )
+        oauth_model = model.split("/", 1)[1] if "/" in model else DEFAULT_CODEX_OAUTH_MODEL
+        return CodexOAuthChatModel(model=oauth_model, callbacks=callbacks, **kwargs)
+
+    if model == "gemini-oauth" or model.startswith("gemini-oauth/"):
+        from spatialagent.agent.oauth_chatmodels import (
+            GeminiOAuthChatModel,
+            DEFAULT_GEMINI_OAUTH_MODEL,
+        )
+        oauth_model = model.split("/", 1)[1] if "/" in model else DEFAULT_GEMINI_OAUTH_MODEL
+        return GeminiOAuthChatModel(model=oauth_model, callbacks=callbacks, **kwargs)
+
     # OpenAI-compatible endpoint routing (OpenRouter, z.AI, local, LiteLLM, vLLM, Ollama, etc.)
     custom_route = _resolve_openai_compatible_routing(model)
     if custom_route:
@@ -401,15 +420,6 @@ def make_llm(
                 model_kwargs["max_tokens"] = _default_max_tokens()
 
         return ChatOpenAI(**model_kwargs)
-
-    # OAuth-authenticated CLI tool backends
-    if model == "codex-oauth":
-        from spatialagent.agent.oauth_chatmodels import CodexOAuthChatModel
-        return CodexOAuthChatModel(callbacks=callbacks, **kwargs)
-
-    if model == "gemini-oauth":
-        from spatialagent.agent.oauth_chatmodels import GeminiOAuthChatModel
-        return GeminiOAuthChatModel(callbacks=callbacks, **kwargs)
 
     # Google Gemini (using OpenAI-compatible endpoint for consistent response format)
     if _is_gemini_model(model):

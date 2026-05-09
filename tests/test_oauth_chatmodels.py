@@ -157,3 +157,21 @@ class TestMakeLlmOAuthRouting(unittest.TestCase):
         result = make_llm("gemini-oauth")
         self.assertIsInstance(result, GeminiOAuthChatModel)
         self.assertEqual(result._llm_type, "gemini-oauth")
+
+    def test_make_llm_oauth_not_hijacked_by_custom_base_url(self):
+        from spatialagent.agent.make_llm import make_llm
+        from spatialagent.agent.oauth_chatmodels import CodexOAuthChatModel
+
+        with patch.dict("os.environ", {"CUSTOM_LLM_BASE_URL": "http://localhost:9999"}):
+            result = make_llm("codex-oauth")
+
+        self.assertIsInstance(result, CodexOAuthChatModel)
+
+    def test_make_llm_oauth_prefix_selects_cli_model(self):
+        from spatialagent.agent.make_llm import make_llm
+
+        codex = make_llm("codex-oauth/gpt-5.5")
+        gemini = make_llm("gemini-oauth/gemini-2.5-pro")
+
+        self.assertEqual(codex.model, "gpt-5.5")
+        self.assertEqual(gemini.model, "gemini-2.5-pro")
