@@ -32,6 +32,7 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
             "CUSTOM_LLM_API_KEY", "CUSTOM_MODEL_API_KEY",
             "OPENAI_API_KEY", "OPENROUTER_API_KEY",
             "CUSTOM_LLM_BASE_URL", "CUSTOM_MODEL_BASE_URL", "OPENAI_BASE_URL",
+            "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL",
         ]:
             self._original_env[key] = os.environ.get(key)
 
@@ -49,6 +50,7 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
             "GEMINI_API_KEY", "GOOGLE_API_KEY",
             "CUSTOM_LLM_API_KEY", "CUSTOM_MODEL_API_KEY",
             "OPENAI_API_KEY", "OPENROUTER_API_KEY",
+            "OPENCODE_GO_API_KEY",
         ]:
             os.environ.pop(key, None)
 
@@ -158,6 +160,44 @@ class TestGeminiAPIKeyIsolation(unittest.TestCase):
                 "https://generativelanguage.googleapis.com/v1beta/openai/"
             )
 
+    def test_gemini_routing_ignores_generic_openai_base_url(self):
+        """Gemini models must not be captured by generic OpenAI-compatible env vars."""
+        self._clear_all_api_keys()
+        os.environ["GEMINI_API_KEY"] = "sk-gemini"
+        os.environ["OPENAI_API_KEY"] = "sk-openai-should-not-leak"
+        os.environ["OPENAI_BASE_URL"] = "https://generic.example/v1"
+
+        with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
+            mock_chat.return_value = MagicMock()
+
+            from spatialagent.agent.make_llm import make_llm
+            make_llm("gemini-3-pro-preview", track_cost=False)
+
+            call_kwargs = mock_chat.call_args.kwargs
+            self.assertEqual(call_kwargs.get("api_key"), "sk-gemini")
+            self.assertEqual(
+                call_kwargs.get("base_url"),
+                "https://generativelanguage.googleapis.com/v1beta/openai/"
+            )
+
+    def test_gemini_name_with_opencode_substring_does_not_use_opencode_key(self):
+        """A Gemini-looking model name must not route to OpenCode Go by substring."""
+        self._clear_all_api_keys()
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-should-not-leak"
+
+        with patch("spatialagent.agent.make_llm.ChatOpenAI") as mock_chat:
+            mock_chat.return_value = MagicMock()
+
+            from spatialagent.agent.make_llm import make_llm
+            make_llm("gemini-opencode-go", track_cost=False)
+
+            call_kwargs = mock_chat.call_args.kwargs
+            self.assertEqual(call_kwargs.get("api_key"), "EMPTY")
+            self.assertEqual(
+                call_kwargs.get("base_url"),
+                "https://generativelanguage.googleapis.com/v1beta/openai/"
+            )
+
 
 # =============================================================================
 # Test: OpenAI-compatible routing
@@ -174,7 +214,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "OPENROUTER_HTTP_REFERER",
             "OPENROUTER_APP_TITLE",
             "ZAI_API_KEY", "ZAI_BASE_URL",
-            "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL",
+            "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL", "OPENCODE_GO_MODEL",
             "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
         ]:
             self._original_env[key] = os.environ.get(key)
@@ -192,7 +232,7 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
             "CUSTOM_LLM_API_KEY", "CUSTOM_MODEL_API_KEY", "OPENAI_API_KEY",
             "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
             "ZAI_API_KEY", "ZAI_BASE_URL",
-            "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL",
+            "OPENCODE_GO_API_KEY", "OPENCODE_GO_BASE_URL", "OPENCODE_GO_MODEL",
             "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
         ]:
             os.environ.pop(key, None)
@@ -297,6 +337,31 @@ class TestOpenAICompatibleRouting(unittest.TestCase):
         self.assertEqual(resolved_model, "kimi-k2.6")
         self.assertEqual(base_url, "https://opencode.ai/zen/go/v1")
         self.assertEqual(api_key, "sk-opencode-go-key")
+
+    def test_opencode_go_prefix_wins_over_gemini_substring(self):
+        """Explicit opencode-go/ routing must win even if the backend model name says gemini."""
+        self._clear()
+        os.environ["OPENCODE_GO_API_KEY"] = "sk-opencode-go-key"
+        os.environ["GEMINI_API_KEY"] = "sk-gemini-should-not-leak"
+
+        from spatialagent.agent.make_llm import _resolve_openai_compatible_routing
+
+        result = _resolve_openai_compatible_routing("opencode-go/gemini-opencode-go")
+        self.assertIsNotNone(result)
+        resolved_model, base_url, api_key, headers = result
+        self.assertEqual(resolved_model, "gemini-opencode-go")
+        self.assertEqual(base_url, "https://opencode.ai/zen/go/v1")
+        self.assertEqual(api_key, "sk-opencode-go-key")
+
+    def test_native_claude_ignores_generic_openai_base_url(self):
+        """Claude models should stay on the Anthropic path when generic base URL exists."""
+        self._clear()
+        os.environ["OPENAI_BASE_URL"] = "https://generic.example/v1"
+        os.environ["OPENAI_API_KEY"] = "sk-openai-should-not-leak"
+
+        from spatialagent.agent.make_llm import _resolve_openai_compatible_routing
+
+        self.assertIsNone(_resolve_openai_compatible_routing("claude-sonnet-4-5-20250929"))
 
     def test_provider_prefix_requires_model_name(self):
         """Provider prefixes without model names should fail before constructing an LLM."""
@@ -607,6 +672,16 @@ class TestExternalCodingAgentTools(unittest.TestCase):
 
             self.assertIsInstance(result, str)
             self.assertIn("ERROR: Codex failed", result)
+
+    def test_spatialagent_observation_failure_detector_catches_delegate_error(self):
+        """The LangGraph loop should be able to mark ERROR observations as failed actions."""
+        from spatialagent.agent.spatialagent import SpatialAgent
+
+        self.assertTrue(
+            SpatialAgent._observation_indicates_failure(
+                "Result: 'ERROR: Codex failed: codex not found'"
+            )
+        )
 
 
 # =============================================================================

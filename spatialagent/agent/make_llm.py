@@ -77,6 +77,21 @@ def _is_bedrock_model(model: str) -> bool:
     return any(model.startswith(prefix) for prefix in BEDROCK_MODEL_PREFIXES)
 
 
+def _is_gemini_model(model: str) -> bool:
+    """Check if a model name should use native Gemini routing."""
+    return model.startswith("gemini-")
+
+
+def _is_claude_model(model: str) -> bool:
+    """Check if a model name should use native Anthropic Claude routing."""
+    return model.startswith("claude-")
+
+
+def _is_native_provider_model(model: str) -> bool:
+    """Return True for models that must not be captured by generic gateways."""
+    return _is_gemini_model(model) or _is_claude_model(model) or _is_bedrock_model(model)
+
+
 def _strip_provider_prefix(model: str, prefix: str) -> str:
     """Strip an explicit provider prefix and validate that a model remains."""
     resolved_model = model.split("/", 1)[1]
@@ -148,6 +163,8 @@ def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict]
         resolved_model = _strip_provider_prefix(model, "local/")
         custom_base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
         custom_api_key = os.environ.get("LOCAL_LLM_API_KEY", "EMPTY")
+    elif _is_native_provider_model(model):
+        return None
     else:
         custom_base_url = (
             os.environ.get("CUSTOM_LLM_BASE_URL")
@@ -305,6 +322,7 @@ def make_llm(
         CUSTOM_LLM_API_KEY / CUSTOM_MODEL_API_KEY: API key for custom OpenAI-compatible endpoint
         OPENROUTER_API_KEY, OPENROUTER_BASE_URL: OpenRouter credentials/routing
         ZAI_API_KEY, ZAI_BASE_URL: z.AI credentials/routing
+        OPENCODE_GO_API_KEY, OPENCODE_GO_BASE_URL, OPENCODE_GO_MODEL: OpenCode Go routing
         LOCAL_LLM_BASE_URL, LOCAL_LLM_API_KEY: local model gateway routing
 
     Args:
@@ -363,7 +381,7 @@ def make_llm(
         return ChatOpenAI(**model_kwargs)
 
     # Google Gemini (using OpenAI-compatible endpoint for consistent response format)
-    if "gemini" in model:
+    if _is_gemini_model(model):
         if ChatOpenAI is None:
             raise ImportError("langchain_openai package required. Install with: pip install langchain-openai")
 
@@ -432,7 +450,7 @@ def make_llm(
         )
 
     # Anthropic Claude (direct API)
-    if "claude" in model:
+    if _is_claude_model(model):
         from langchain_anthropic import ChatAnthropic
 
         # Handle 1M context for Claude Sonnet 4.5 (beta)

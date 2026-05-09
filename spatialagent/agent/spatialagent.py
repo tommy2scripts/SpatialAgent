@@ -241,6 +241,20 @@ class SpatialAgent:
         self.graph = self._build_graph()
         self.app = self.graph.compile(checkpointer=MemorySaver())
 
+    @staticmethod
+    def _observation_indicates_failure(result: str) -> bool:
+        """Detect visible tool failures in an action result."""
+        if not isinstance(result, str):
+            return False
+
+        failure_markers = (
+            "ERROR:",
+            "Error executing code:",
+            "Command failed",
+            "Command timed out",
+        )
+        return any(marker in result for marker in failure_markers)
+
     def _build_system_prompt(self) -> str:
         """Build system prompt with dynamic tool loading capability."""
         # Get generic tool description
@@ -767,6 +781,13 @@ The system will retrieve relevant tools based on your task.
         # Truncate if too long
         if len(result) > 15000:
             result = result[:15000] + "\n... (output truncated)"
+
+        if self._observation_indicates_failure(result) and not result.startswith("ERROR: Action failed"):
+            result = (
+                "ERROR: Action failed or returned a tool failure. "
+                "Inspect the details below before retrying or concluding.\n\n"
+                f"{result}"
+            )
 
         # Build observation with optional figure interpretations
         if figure_interpretations:
