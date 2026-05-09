@@ -26,7 +26,7 @@ DEFAULT_OPENAI_MODEL = "gpt-5"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
 DEFAULT_OPENCODE_GO_MODEL = "kimi-k2.6"
-DEFAULT_MAX_TOKENS = 65536
+DEFAULT_MAX_TOKENS = 131072
 
 # OpenAI-compatible models that emit reasoning_content before final content.
 # If max_tokens is too small, these models can spend the whole budget on hidden
@@ -36,7 +36,7 @@ REASONING_CONTENT_MODELS = (
     "deepseek-r1",
     "deepseek-reasoner",
 )
-DEFAULT_REASONING_MAX_TOKENS = 32768
+DEFAULT_REASONING_MAX_TOKENS = 65536
 
 # Default stop sequences - prevent multiple action blocks and observation hallucination
 DEFAULT_STOP_SEQUENCES = ["</act>", "</conclude>"]
