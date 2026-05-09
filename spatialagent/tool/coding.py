@@ -333,6 +333,129 @@ def execute_bash(
 
 
 # =============================================================================
+# External Coding Agent Tools
+# =============================================================================
+
+def _run_external_agent(cli_command: str, task: str, timeout: int = 300) -> Dict[str, Any]:
+    """Run an external coding agent CLI and capture output.
+
+    Args:
+        cli_command: The CLI command to run (e.g., "claude", "codex")
+        task: The task/prompt to give the agent
+        timeout: Maximum seconds to wait for the agent to complete
+
+    Returns:
+        Dict with success, output, error keys
+    """
+    try:
+        result = subprocess.run(
+            [cli_command, "--print", task],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={**os.environ, "TERM": "dumb"},
+        )
+
+        output_parts = []
+        if result.stdout:
+            output_parts.append(result.stdout.strip())
+        if result.stderr:
+            output_parts.append(f"Stderr:\n{result.stderr.strip()}")
+
+        output = "\n\n".join(output_parts) if output_parts else "(no output)"
+
+        return {
+            "success": result.returncode == 0,
+            "output": output,
+            "error": None if result.returncode == 0 else f"Exit code {result.returncode}",
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Agent timed out after {timeout}s",
+        }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"{cli_command} not found. Install it first (e.g., 'npm install -g @anthropic-ai/claude-code')",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"{type(e).__name__}: {str(e)}",
+        }
+
+
+@tool
+def delegate_to_claude_code(
+    task: Annotated[str, Field(description="Task description for Claude Code to execute")],
+    timeout: Annotated[int, Field(description="Maximum seconds to wait (default: 300)")] = 300,
+) -> str:
+    """
+    Delegate a coding task to Claude Code CLI (Anthropic).
+
+    Claude Code can read/write files, run terminal commands, and reason about codebases.
+    Requires 'claude' CLI to be installed: npm install -g @anthropic-ai/claude-code
+
+    Use this for complex tasks that benefit from Claude's code understanding,
+    such as refactoring, debugging, or implementing features across multiple files.
+    """
+    result = _run_external_agent("claude", task, timeout)
+
+    if result["success"]:
+        return f"Claude Code completed the task:\n\n{result['output']}"
+    else:
+        return f"Claude Code failed: {result['error']}\n\nOutput:\n{result['output']}"
+
+
+@tool
+def delegate_to_codex(
+    task: Annotated[str, Field(description="Task description for OpenAI Codex to execute")],
+    timeout: Annotated[int, Field(description="Maximum seconds to wait (default: 300)")] = 300,
+) -> str:
+    """
+    Delegate a coding task to OpenAI Codex CLI.
+
+    Codex can analyze and modify code, run commands, and solve complex programming tasks.
+    Requires 'codex' CLI to be installed: pip install codex-cli
+
+    Use this for tasks that benefit from GPT-5's code reasoning,
+    such as algorithm design, code review, or generating test suites.
+    """
+    result = _run_external_agent("codex", task, timeout)
+
+    if result["success"]:
+        return f"Codex completed the task:\n\n{result['output']}"
+    else:
+        return f"Codex failed: {result['error']}\n\nOutput:\n{result['output']}"
+
+
+@tool
+def delegate_to_opencode(
+    task: Annotated[str, Field(description="Task description for OpenCode to execute")],
+    timeout: Annotated[int, Field(description="Maximum seconds to wait (default: 300)")] = 300,
+) -> str:
+    """
+    Delegate a coding task to OpenCode CLI.
+
+    OpenCode is an open-source coding agent that can read/write files and run commands.
+    Requires 'opencode' CLI to be installed.
+
+    Use this for tasks where you want an open-source alternative,
+    such as quick scripts, file manipulation, or code exploration.
+    """
+    result = _run_external_agent("opencode", task, timeout)
+
+    if result["success"]:
+        return f"OpenCode completed the task:\n\n{result['output']}"
+    else:
+        return f"OpenCode failed: {result['error']}\n\nOutput:\n{result['output']}"
+
+
+# =============================================================================
 # Backward Compatibility
 # =============================================================================
 

@@ -12,9 +12,10 @@ SpatialAgent is an autonomous AI agent for spatial transcriptomics, single-cell 
 
 Key features:
 - **Plan-Act-Conclude architecture** with direct code execution
-- **72 specialized tools** for database queries, literature mining, spatial analytics, and genomic analysis
+- **72+ specialized tools** for database queries, literature mining, spatial analytics, and genomic analysis
 - **17 skill templates** for guided workflows (annotation, CCI, panel design, spatial mapping, etc.)
 - **Multi-model support**: Claude, GPT, Gemini, OpenRouter, z.AI, and local OpenAI-compatible model gateways
+- **External coding agents**: Delegate complex tasks to Claude Code, Codex CLI, or OpenCode CLI
 
 ### Installation
 

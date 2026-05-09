@@ -111,6 +111,9 @@ from .subagent import (
 # CodeAct: Python REPL and Bash (creator functions - need initialization)
 from .coding import create_python_repl_tool, create_bash_tool
 
+# External coding agents (delegate tasks to Claude Code, Codex, OpenCode)
+from .coding import delegate_to_claude_code, delegate_to_codex, delegate_to_opencode
+
 # Code inspection: Retrieve and adapt tool source code (direct @tool function)
 from .foundry import inspect_tool_code
 
@@ -203,6 +206,10 @@ __all__ = [
     # CodeAct (creator functions)
     "create_python_repl_tool",
     "create_bash_tool",
+    # External Coding Agents
+    "delegate_to_claude_code",
+    "delegate_to_codex",
+    "delegate_to_opencode",
     # Support
     "inspect_tool_code",
 ]
