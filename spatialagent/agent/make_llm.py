@@ -402,6 +402,15 @@ def make_llm(
 
         return ChatOpenAI(**model_kwargs)
 
+    # OAuth-authenticated CLI tool backends
+    if model == "codex-oauth":
+        from spatialagent.agent.oauth_chatmodels import CodexOAuthChatModel
+        return CodexOAuthChatModel(callbacks=callbacks, **kwargs)
+
+    if model == "gemini-oauth":
+        from spatialagent.agent.oauth_chatmodels import GeminiOAuthChatModel
+        return GeminiOAuthChatModel(callbacks=callbacks, **kwargs)
+
     # Google Gemini (using OpenAI-compatible endpoint for consistent response format)
     if _is_gemini_model(model):
         if ChatOpenAI is None:

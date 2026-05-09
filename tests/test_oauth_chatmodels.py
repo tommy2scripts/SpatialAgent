@@ -60,3 +60,21 @@ class TestGeminiOAuthChatModel(unittest.TestCase):
             self.assertIn("--output-format", args)
             self.assertIn("json", args)
             self.assertEqual(result.generations[0].text, "42 is the answer.")
+
+
+class TestMakeLlmOAuthRouting(unittest.TestCase):
+    """Test that make_llm routes codex-oauth and gemini-oauth prefixes correctly."""
+
+    def test_make_llm_codex_oauth_returns_chatmodel(self):
+        from spatialagent.agent.make_llm import make_llm
+        from spatialagent.agent.oauth_chatmodels import CodexOAuthChatModel
+        result = make_llm("codex-oauth")
+        self.assertIsInstance(result, CodexOAuthChatModel)
+        self.assertEqual(result._llm_type, "codex-oauth")
+
+    def test_make_llm_gemini_oauth_returns_chatmodel(self):
+        from spatialagent.agent.make_llm import make_llm
+        from spatialagent.agent.oauth_chatmodels import GeminiOAuthChatModel
+        result = make_llm("gemini-oauth")
+        self.assertIsInstance(result, GeminiOAuthChatModel)
+        self.assertEqual(result._llm_type, "gemini-oauth")
