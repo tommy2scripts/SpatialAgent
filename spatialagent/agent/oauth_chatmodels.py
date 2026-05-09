@@ -30,9 +30,22 @@ class CodexOAuthChatModel(BaseChatModel):
         prompt = messages[-1].content if messages else ""
 
         cmd = ["codex", "exec", "--print", "-m", self.model, prompt]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=self.timeout
-        )
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=self.timeout
+            )
+        except subprocess.TimeoutExpired:
+            return ChatResult(
+                generations=[ChatGeneration(
+                    message=AIMessage(content=f"ERROR: codex timed out after {self.timeout}s")
+                )]
+            )
+        except FileNotFoundError:
+            return ChatResult(
+                generations=[ChatGeneration(
+                    message=AIMessage(content="ERROR: codex CLI not found. Install with: npm install -g @openai/codex")
+                )]
+            )
 
         text = (
             result.stdout.strip()
@@ -68,9 +81,22 @@ class GeminiOAuthChatModel(BaseChatModel):
             "--prompt", prompt,
             "--output-format", "json",
         ]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=self.timeout
-        )
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=self.timeout
+            )
+        except subprocess.TimeoutExpired:
+            return ChatResult(
+                generations=[ChatGeneration(
+                    message=AIMessage(content=f"ERROR: gemini timed out after {self.timeout}s")
+                )]
+            )
+        except FileNotFoundError:
+            return ChatResult(
+                generations=[ChatGeneration(
+                    message=AIMessage(content="ERROR: gemini CLI not found. Install with: npm install -g @google/gemini-cli")
+                )]
+            )
 
         if result.returncode == 0:
             try:
