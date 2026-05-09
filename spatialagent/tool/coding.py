@@ -12,7 +12,7 @@ import os
 import base64
 import glob
 from contextlib import redirect_stdout, redirect_stderr
-from typing import Annotated, Dict, Any, List, Set
+from typing import Annotated, Dict, Any, List, Set, Sequence
 from langchain_core.tools import tool
 from pydantic import Field
 
@@ -336,11 +336,38 @@ def execute_bash(
 # External Coding Agent Tools
 # =============================================================================
 
-def _run_external_agent(cli_command: str, task: str, timeout: int = 300) -> Dict[str, Any]:
+_AGENT_COMMANDS = {
+    "claude": lambda task: ["claude", "--print", task],
+    "codex": lambda task: [
+        "codex",
+        "exec",
+        "--skip-git-repo-check",
+        "-m",
+        os.environ.get("CODEX_MODEL", "gpt-5.5"),
+        task,
+    ],
+    "opencode": lambda task: ["opencode", "run", task],
+}
+
+
+def _build_external_agent_command(cli_command: str | Sequence[str], task: str) -> List[str]:
+    """Build the subprocess argv for a supported coding-agent CLI."""
+    if isinstance(cli_command, str):
+        if cli_command in _AGENT_COMMANDS:
+            return _AGENT_COMMANDS[cli_command](task)
+        return [cli_command, task]
+
+    command = list(cli_command)
+    if not command:
+        raise ValueError("cli_command cannot be empty")
+    return command + [task]
+
+
+def _run_external_agent(cli_command: str | Sequence[str], task: str, timeout: int = 300) -> Dict[str, Any]:
     """Run an external coding agent CLI and capture output.
 
     Args:
-        cli_command: The CLI command to run (e.g., "claude", "codex")
+        cli_command: The CLI command to run (e.g., "claude", "codex") or an argv prefix.
         task: The task/prompt to give the agent
         timeout: Maximum seconds to wait for the agent to complete
 
@@ -348,8 +375,17 @@ def _run_external_agent(cli_command: str, task: str, timeout: int = 300) -> Dict
         Dict with success, output, error keys
     """
     try:
+        timeout = int(timeout)
+        if timeout <= 0:
+            return {
+                "success": False,
+                "output": "",
+                "error": "timeout must be a positive integer",
+            }
+
+        command = _build_external_agent_command(cli_command, task)
         result = subprocess.run(
-            [cli_command, "--print", task],
+            command,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -376,10 +412,11 @@ def _run_external_agent(cli_command: str, task: str, timeout: int = 300) -> Dict
             "error": f"Agent timed out after {timeout}s",
         }
     except FileNotFoundError:
+        command_name = cli_command if isinstance(cli_command, str) else cli_command[0] if cli_command else "agent"
         return {
             "success": False,
             "output": "",
-            "error": f"{cli_command} not found. Install it first (e.g., 'npm install -g @anthropic-ai/claude-code')",
+            "error": f"{command_name} not found. Install the CLI and ensure it is on PATH.",
         }
     except Exception as e:
         return {

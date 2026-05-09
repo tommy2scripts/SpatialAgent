@@ -7,6 +7,12 @@ import os
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
+try:
+    from langchain_openai import ChatOpenAI, AzureChatOpenAI
+except ImportError:  # pragma: no cover - surfaced when make_llm uses these providers
+    ChatOpenAI = None
+    AzureChatOpenAI = None
+
 # Default recommended models (2025)
 DEFAULT_OPENAI_MODEL = "gpt-5"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
@@ -60,6 +66,14 @@ def _is_bedrock_model(model: str) -> bool:
     return any(model.startswith(prefix) for prefix in BEDROCK_MODEL_PREFIXES)
 
 
+def _strip_provider_prefix(model: str, prefix: str) -> str:
+    """Strip an explicit provider prefix and validate that a model remains."""
+    resolved_model = model.split("/", 1)[1]
+    if not resolved_model:
+        raise ValueError(f"Model '{model}' is missing a model name after '{prefix}'.")
+    return resolved_model
+
+
 def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict] | None:
     """Resolve routing for OpenAI-compatible endpoints.
 
@@ -67,43 +81,48 @@ def _resolve_openai_compatible_routing(model: str) -> tuple[str, str, str, dict]
         Tuple of (resolved_model, base_url, api_key, default_headers) if routing should
         use ChatOpenAI with a custom endpoint, otherwise None.
     """
-    custom_base_url = (
-        os.environ.get("CUSTOM_LLM_BASE_URL")
-        or os.environ.get("CUSTOM_MODEL_BASE_URL")
-        or os.environ.get("OPENAI_BASE_URL")
-        or ""
-    )
-    custom_api_key = (
-        os.environ.get("CUSTOM_LLM_API_KEY")
-        or os.environ.get("CUSTOM_MODEL_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or "EMPTY"
-    )
     default_headers = {}
 
     resolved_model = model
 
     # Explicit provider prefixes (keeps routing unambiguous)
     if model.startswith("openrouter/"):
-        resolved_model = model.split("/", 1)[1]
-        custom_base_url = custom_base_url or os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-        custom_api_key = os.environ.get("OPENROUTER_API_KEY", custom_api_key)
+        resolved_model = _strip_provider_prefix(model, "openrouter/")
+        custom_base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        custom_api_key = os.environ.get("OPENROUTER_API_KEY", "EMPTY")
         if os.environ.get("OPENROUTER_HTTP_REFERER"):
             default_headers["HTTP-Referer"] = os.environ["OPENROUTER_HTTP_REFERER"]
         if os.environ.get("OPENROUTER_APP_TITLE"):
             default_headers["X-Title"] = os.environ["OPENROUTER_APP_TITLE"]
     elif model.startswith("zai/"):
-        resolved_model = model.split("/", 1)[1]
-        custom_base_url = custom_base_url or os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
-        custom_api_key = os.environ.get("ZAI_API_KEY", custom_api_key)
+        resolved_model = _strip_provider_prefix(model, "zai/")
+        custom_base_url = os.environ.get("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
+        custom_api_key = os.environ.get("ZAI_API_KEY", "EMPTY")
     elif model.startswith("opencode-go/"):
-        resolved_model = model.split("/", 1)[1]
-        custom_base_url = custom_base_url or os.environ.get("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
-        custom_api_key = os.environ.get("OPENCODE_GO_API_KEY", "EMPTY")
+        resolved_model = _strip_provider_prefix(model, "opencode-go/")
+        custom_base_url = os.environ.get("OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+        custom_api_key = (
+            os.environ.get("OPENCODE_GO_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
+            or "EMPTY"
+        )
     elif model.startswith("local/"):
-        resolved_model = model.split("/", 1)[1]
-        custom_base_url = custom_base_url or os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
-        custom_api_key = os.environ.get("LOCAL_LLM_API_KEY", custom_api_key)
+        resolved_model = _strip_provider_prefix(model, "local/")
+        custom_base_url = os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1")
+        custom_api_key = os.environ.get("LOCAL_LLM_API_KEY", "EMPTY")
+    else:
+        custom_base_url = (
+            os.environ.get("CUSTOM_LLM_BASE_URL")
+            or os.environ.get("CUSTOM_MODEL_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or ""
+        )
+        custom_api_key = (
+            os.environ.get("CUSTOM_LLM_API_KEY")
+            or os.environ.get("CUSTOM_MODEL_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "EMPTY"
+        )
 
     if custom_base_url:
         return resolved_model, custom_base_url, custom_api_key, default_headers
@@ -270,7 +289,8 @@ def make_llm(
     # OpenAI-compatible endpoint routing (OpenRouter, z.AI, local, LiteLLM, vLLM, Ollama, etc.)
     custom_route = _resolve_openai_compatible_routing(model)
     if custom_route:
-        from langchain_openai import ChatOpenAI
+        if ChatOpenAI is None:
+            raise ImportError("langchain_openai package required. Install with: pip install langchain-openai")
 
         resolved_model, custom_base_url, custom_api_key, default_headers = custom_route
         stop_sequences = kwargs.pop("stop_sequences", DEFAULT_STOP_SEQUENCES)
@@ -303,7 +323,8 @@ def make_llm(
 
     # Google Gemini (using OpenAI-compatible endpoint for consistent response format)
     if "gemini" in model:
-        from langchain_openai import ChatOpenAI
+        if ChatOpenAI is None:
+            raise ImportError("langchain_openai package required. Install with: pip install langchain-openai")
 
         # Stop sequences for Gemini
         stop_sequences = kwargs.pop("stop_sequences", DEFAULT_STOP_SEQUENCES)
@@ -397,7 +418,8 @@ def make_llm(
     azure_endpoint = os.environ.get("AZURE_API_ENDPOINT", "")
 
     if azure_api_key and azure_endpoint:
-        from langchain_openai import AzureChatOpenAI
+        if AzureChatOpenAI is None:
+            raise ImportError("langchain_openai package required. Install with: pip install langchain-openai")
 
         azure_deployment = os.environ.get("AZURE_DEPLOYMENT_NAME", model)
 
@@ -442,7 +464,8 @@ def make_llm(
 
         if use_azure and model in AZURE_MODELS:
             # Azure OpenAI
-            from langchain_openai import AzureChatOpenAI
+            if AzureChatOpenAI is None:
+                raise ImportError("langchain_openai package required. Install with: pip install langchain-openai")
 
             config = AZURE_MODELS[model]
             region = config["region"]
@@ -467,7 +490,8 @@ def make_llm(
             return AzureChatOpenAI(**model_kwargs)
         else:
             # Direct OpenAI
-            from langchain_openai import ChatOpenAI
+            if ChatOpenAI is None:
+                raise ImportError("langchain_openai package required. Install with: pip install langchain-openai")
 
             model_kwargs = {
                 "model": model,
