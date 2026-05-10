@@ -43,12 +43,21 @@ MODEL_RESOURCE_MAP: Dict[str, str] = {
 
 
 def _api_key() -> str:
-    """Resolve Gemini API key from environment."""
-    return (
-        os.environ.get("GEMINI_API_KEY")
-        or os.environ.get("GOOGLE_API_KEY")
-        or ""
-    )
+    """Resolve Gemini API key from environment or ~/.gemini/.env file."""
+    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+    if key:
+        return key
+    # Fallback: read from ~/.gemini/.env
+    try:
+        dotenv_path = os.path.expanduser("~/.gemini/.env")
+        with open(dotenv_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("GEMINI_API_KEY="):
+                    return line.split("=", 1)[1].strip()
+    except (FileNotFoundError, IOError, OSError):
+        pass
+    return ""
 
 
 def _resolve_model_resource(model: str) -> str:
@@ -383,6 +392,10 @@ class GeminiSDKChatModel(BaseChatModel):
                 stop,
             )
 
+        # Save and clear GOOGLE_GEMINI_BASE_URL (Gemini CLI setting) to prevent
+        # it from interfering with the google-genai SDK's endpoint resolution.
+        _saved_base_url = os.environ.pop("GOOGLE_GEMINI_BASE_URL", None)
+
         client = Client(api_key=api_key)
         resource_name = _resolve_model_resource(self.model)
 
@@ -409,13 +422,17 @@ class GeminiSDKChatModel(BaseChatModel):
                 f"Gemini SDK error: {_redact_credentials(str(exc))}",
                 stop,
             )
+        finally:
+            # Restore GOOGLE_GEMINI_BASE_URL if we cleared it
+            if _saved_base_url is not None:
+                os.environ["GOOGLE_GEMINI_BASE_URL"] = _saved_base_url
 
         message = _parse_gemini_response(response, stop)
         return ChatResult(
             generations=[ChatGeneration(message=message)],
             llm_output={
                 "model": self.model,
-                "usage": _extract_usage(response),
+                "token_usage": _extract_usage(response),
             },
         )
 
