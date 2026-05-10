@@ -380,6 +380,15 @@ def make_llm(
         oauth_model = _strip_provider_prefix(model, "gemini-oauth/") if "/" in model else DEFAULT_GEMINI_OAUTH_MODEL
         return GeminiOAuthChatModel(model=oauth_model, callbacks=callbacks, **kwargs)
 
+    # Gemini SDK-based ChatModel with full tool calling support
+    if model == "gemini-sdk" or model.startswith("gemini-sdk/"):
+        from spatialagent.agent.gemini_sdk_chatmodel import (
+            GeminiSDKChatModel,
+            DEFAULT_GEMINI_SDK_MODEL,
+        )
+        sdk_model = _strip_provider_prefix(model, "gemini-sdk/") if "/" in model else DEFAULT_GEMINI_SDK_MODEL
+        return GeminiSDKChatModel(model=sdk_model, callbacks=callbacks, **kwargs)
+
     # OpenAI-compatible endpoint routing (OpenRouter, z.AI, local, LiteLLM, vLLM, Ollama, etc.)
     custom_route = _resolve_openai_compatible_routing(model)
     if custom_route:
