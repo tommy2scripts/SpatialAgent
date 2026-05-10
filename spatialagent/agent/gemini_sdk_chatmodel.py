@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_GEMINI_SDK_MODEL = "gemini-2.5-pro"
+DEFAULT_GEMINI_SDK_MODEL = "gemini-3-flash-preview"
 
 # Map short names used in make_llm to full model resource names.
 MODEL_RESOURCE_MAP: Dict[str, str] = {

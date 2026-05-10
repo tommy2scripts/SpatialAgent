@@ -30,7 +30,7 @@ DEFAULT_OPENCODE_GO_MODEL = "kimi-k2.6"
 # Override via SPATIALAGENT_DEFAULT_MODEL env var.
 DEFAULT_MODEL = os.environ.get(
     "SPATIALAGENT_DEFAULT_MODEL",
-    "gemini-sdk/gemini-2.5-pro",
+    "gemini-sdk/gemini-3.1-pro-preview",
 )
 DEFAULT_MAX_TOKENS = 393216
 
