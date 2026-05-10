@@ -98,11 +98,11 @@ class SpatialAgent:
                 If None, uses the agent's model. Set to a specific model like "gemini-3-flash-preview"
                 to always use that model for web search regardless of the agent's LLM.
         """
-        # Default to Claude Sonnet 4.5 if no LLM provided
+        # Default to Gemini SDK if no LLM provided (override via SPATIALAGENT_DEFAULT_MODEL env var)
         if llm is None:
-            from .make_llm import make_llm, DEFAULT_CLAUDE_MODEL
-            print(f"No LLM provided, using default: {DEFAULT_CLAUDE_MODEL}", flush=True)
-            llm = make_llm(DEFAULT_CLAUDE_MODEL)
+            from .make_llm import make_llm, DEFAULT_MODEL
+            print(f"No LLM provided, using default: {DEFAULT_MODEL}", flush=True)
+            llm = make_llm(DEFAULT_MODEL)
         self.llm = llm
         self.tool_retrieval = tool_retrieval
         self.min_tools = min_tools

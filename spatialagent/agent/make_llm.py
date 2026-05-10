@@ -26,6 +26,12 @@ DEFAULT_OPENAI_MODEL = "gpt-5"
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
 DEFAULT_OPENCODE_GO_MODEL = "kimi-k2.6"
+# Master default used when SpatialAgent is created without an explicit LLM.
+# Override via SPATIALAGENT_DEFAULT_MODEL env var.
+DEFAULT_MODEL = os.environ.get(
+    "SPATIALAGENT_DEFAULT_MODEL",
+    "gemini-sdk/gemini-2.5-pro",
+)
 DEFAULT_MAX_TOKENS = 393216
 
 # OpenAI-compatible models that emit reasoning_content before final content.
