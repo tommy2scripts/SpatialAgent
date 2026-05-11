@@ -1,10 +1,19 @@
 """Quick inspection of the user's Xenium h5ad file"""
-import sys
-sys.path.insert(0, '/Users/tommytran/SpatialAgent')
+import sys, os
+
+# Resolve repo root relative to this script's location
+_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _REPO_ROOT)
+
+DATA_PATH = os.path.join(
+    os.path.expanduser("~"),
+    "Downloads/xenium_atlas_v2/data/adata_v4.h5ad",
+)
+
 import anndata, numpy as np
 
-print("Loading /Users/tommytran/Downloads/xenium_atlas_v2/data/adata_v4.h5ad...")
-adata = anndata.read_h5ad('/Users/tommytran/Downloads/xenium_atlas_v2/data/adata_v4.h5ad')
+print(f"Loading {DATA_PATH}...")
+adata = anndata.read_h5ad(DATA_PATH)
 
 print(f"\nShape: {adata.shape[0]} cells x {adata.shape[1]} genes")
 print(f"Size in memory: {adata.n_obs * adata.n_vars * 4 / 1e6:.1f} MB (dense)")

@@ -1,5 +1,6 @@
 .vscode
 .DS_Store
+.venv
 
 models
 __pycache__/
@@ -7,3 +8,12 @@ __pycache__/
 *.egg-info/
 wandb
 experiments
+
+# Security — never commit credentials
+.env
+.env.*
+*.pem
+*.key
+credentials*
+service_account*
+client_secret*

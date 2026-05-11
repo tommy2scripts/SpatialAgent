@@ -9,7 +9,7 @@
 
 ## Files Generated (15 deliverables)
 
-All in `/Users/tommytran/SpatialAgent/experiments/phase2B_vista_macrophage_state/`
+All in `./experiments/phase2B_vista_macrophage_state/`
 
 ### CSVs (8)
 | File | Rows | Content |

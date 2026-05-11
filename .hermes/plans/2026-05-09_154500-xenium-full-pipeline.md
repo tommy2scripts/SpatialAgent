@@ -10,7 +10,7 @@
 
 | Asset | Value |
 |---|---|
-| **File** | `/Users/tommytran/Downloads/xenium_atlas_v2/data/adata_v4.h5ad` |
+| **File** | `~/Downloads/xenium_atlas_v2/data/adata_v4.h5ad` |
 | **Cells** | 1,280,000 |
 | **Genes** | ~380 (Xenium panel) |
 | **Sample types** | PN_Breast, PN_Lung, PT_Breast, PT_Lung (Primary Normal + Tumor) |

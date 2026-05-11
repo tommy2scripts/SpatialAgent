@@ -2,7 +2,7 @@
 
 ## Dataset
 Path:
-`/Users/tommytran/Downloads/xenium_atlas_v2/data/adata_v4.h5ad`
+`./data/adata_v4.h5ad` (located at `~/Downloads/xenium_atlas_v2/data/adata_v4.h5ad`)
 
 Samples:
 - PN_Breast
